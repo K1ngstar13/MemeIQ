@@ -367,15 +367,266 @@ function viewChart() {
 // ==========================================
 
 // Main AI Analysis Controller
+// Put your Worker URL here
+const AI_API_BASE = "https://YOUR_WORKER_URL.workers.dev";
+
 async function runAIAnalysis() {
-    const apiKey = document.getElementById('hfApiKey').value.trim();
-    const tokenName = document.getElementById('tokenName').textContent;
-    const tokenSymbol = document.getElementById('tokenSymbol').textContent;
-    
-    if (!currentTokenData) {
-        showToast('Please analyze a token first');
-        return;
+  hideAIError();
+
+  // Show spinners
+  showEl("sentimentLoading", true);
+  showEl("patternLoading", true);
+  showEl("rugPullLoading", true);
+
+  // Hide placeholders
+  showEl("sentimentPlaceholder", false);
+  showEl("patternPlaceholder", false);
+  showEl("rugPullPlaceholder", false);
+
+  // Hide old results until new ones arrive
+  showEl("sentimentResult", false);
+  showEl("patternResult", false);
+  showEl("rugPullResult", false);
+
+  try {
+    // Build text for sentiment (use what you already have in the header)
+    const name = (document.getElementById("tokenName")?.textContent || "").trim();
+    const symbol = (document.getElementById("tokenSymbol")?.textContent || "").trim();
+    const addressLine = (document.getElementById("contractAddress")?.textContent || "").trim();
+
+    const sentimentText = `${name} ${symbol} ${addressLine}`.slice(0, 450);
+
+    // Build rug risk summary from your on-page metrics (cheap + effective)
+    const summary = buildRiskSummary();
+
+    // For chart vision: capture your Chart.js canvas as base64
+    const canvas = document.getElementById("volumeChart");
+    const imageDataUrl = canvas ? canvas.toDataURL("image/png") : null;
+
+    // Run in parallel (fast)
+    const [sentiment, rug, chart] = await Promise.allSettled([
+      postJSON(`${AI_API_BASE}/api/sentiment`, { text: sentimentText }),
+      postJSON(`${AI_API_BASE}/api/rugrisk`, { summary }),
+      imageDataUrl ? postJSON(`${AI_API_BASE}/api/chart-vision`, { imageDataUrl }) : Promise.resolve({ ok: false }),
+    ]);
+
+    // Sentiment
+    if (sentiment.status === "fulfilled" && sentiment.value?.ok) {
+      renderSentiment(sentiment.value.preds);
+      showEl("sentimentResult", true);
+    } else {
+      showEl("sentimentPlaceholder", true);
     }
+    showEl("sentimentLoading", false);
+
+    // Rug risk
+    if (rug.status === "fulfilled" && rug.value?.ok) {
+      renderRugRisk(rug.value.data); // this is the bart-large-mnli output
+      showEl("rugPullResult", true);
+    } else {
+      showEl("rugPullPlaceholder", true);
+    }
+    showEl("rugPullLoading", false);
+
+    // Pattern recognition placeholder
+    if (chart.status === "fulfilled" && chart.value?.ok) {
+      renderPattern(chart.value.data);
+      showEl("patternResult", true);
+    } else {
+      showEl("patternPlaceholder", true);
+    }
+    showEl("patternLoading", false);
+
+  } catch (e) {
+    showAIError(`AI analysis failed: ${e.message || e}`);
+    showEl("sentimentLoading", false);
+    showEl("patternLoading", false);
+    showEl("rugPullLoading", false);
+
+    // Restore placeholders
+    showEl("sentimentPlaceholder", true);
+    showEl("patternPlaceholder", true);
+    showEl("rugPullPlaceholder", true);
+  }
+}
+
+async function postJSON(url, body) {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return r.json();
+}
+
+function buildRiskSummary() {
+  // Pull from your UI so it’s consistent with the on-chain analysis you already calculated
+  const liq = textOf("totalLiquidity");
+  const mcap = textOf("marketCap");
+  const ratio = textOf("mcapLiqRatio");
+  const top10 = textOf("top10Holders");
+  const dev = textOf("devWallet");
+  const lpLocked = textOf("lpLocked");
+  const vol = textOf("volume24h");
+  const buySell = textOf("buySellRatio");
+  const wash = textOf("washTradingRisk");
+
+  return `
+Token risk summary:
+- Liquidity: ${liq}
+- Market cap: ${mcap}
+- MCap/Liq ratio: ${ratio}
+- LP burned/locked: ${lpLocked}
+- 24h volume: ${vol}
+- Buy/Sell ratio: ${buySell}
+- Wash trading risk: ${wash}
+- Top 10 holders: ${top10}
+- Dev wallet percent: ${dev}
+
+Classify this token as one of: rug pull, legitimate, high risk, safe.
+Return the most likely label and confidence.
+  `.trim();
+}
+
+function renderSentiment(preds) {
+  // preds: [{label:"positive"|"neutral"|"negative", score:number}, ...]
+  const pos = preds.find(p => p.label === "positive")?.score || 0;
+  const neu = preds.find(p => p.label === "neutral")?.score || 0;
+  const neg = preds.find(p => p.label === "negative")?.score || 0;
+
+  setText("positiveSentiment", `${Math.round(pos * 100)}%`);
+  setText("neutralSentiment", `${Math.round(neu * 100)}%`);
+  setText("negativeSentiment", `${Math.round(neg * 100)}%`);
+
+  // Simple score: positive minus negative scaled to 0-100
+  const score = Math.max(0, Math.min(100, Math.round((pos - neg + 1) * 50)));
+  setText("sentimentScore", `${score}/100`);
+
+  const bar = document.getElementById("sentimentBar");
+  if (bar) bar.style.width = `${score}%`;
+
+  const summary =
+    score >= 70 ? "Strong positive social sentiment detected." :
+    score >= 50 ? "Mixed-to-positive sentiment with moderate momentum." :
+    score >= 35 ? "Mixed sentiment; social conviction looks weak." :
+                  "Negative sentiment dominates; caution advised.";
+  setText("sentimentSummary", summary);
+
+  // optional fake mentions list (until you add real Twitter/Reddit scraping)
+  const mentions = document.getElementById("sentimentMentions");
+  if (mentions) {
+    mentions.innerHTML = `
+      <div class="text-gray-500">• HF sentiment is based on text prompt only (no scraping yet)</div>
+      <div class="text-gray-500">• Add X/Reddit data source later for real mentions</div>
+    `;
+  }
+}
+
+function renderRugRisk(result) {
+  // bart-large-mnli output looks like:
+  // {labels:[...], scores:[...], sequence:"..."}
+  const labels = result?.labels || [];
+  const scores = result?.scores || [];
+  if (!labels.length) {
+    setText("rugPullVerdict", "No result returned.");
+    return;
+  }
+
+  // Find "rug pull" probability, and compute a risk score (0 safe → 100 risky)
+  const rugIdx = labels.findIndex(l => String(l).toLowerCase().includes("rug"));
+  const riskProb = rugIdx >= 0 ? scores[rugIdx] : 0.25;
+  const riskScore = Math.round(riskProb * 100);
+
+  const scoreEl = document.getElementById("rugPullScore");
+  if (scoreEl) {
+    scoreEl.textContent = `${riskScore}`;
+    scoreEl.className = riskScore >= 70 ? "text-4xl font-bold mb-1 text-red-400"
+                   : riskScore >= 45 ? "text-4xl font-bold mb-1 text-yellow-400"
+                                     : "text-4xl font-bold mb-1 text-green-400";
+  }
+
+  const verdict =
+    riskScore >= 70 ? "HIGH RISK: Potential rug indicators flagged." :
+    riskScore >= 45 ? "MEDIUM RISK: Caution—watch liquidity and holders." :
+                      "LOWER RISK: Fewer rug-like signals detected.";
+  setText("rugPullVerdict", verdict);
+
+  const box = document.getElementById("rugPullVerdictBox");
+  if (box) {
+    box.className =
+      "mt-4 p-3 rounded-lg border " +
+      (riskScore >= 70
+        ? "bg-red-900/20 border-red-500/30"
+        : riskScore >= 45
+        ? "bg-yellow-900/20 border-yellow-500/30"
+        : "bg-green-900/20 border-green-500/30");
+  }
+
+  // Show model flags (top labels)
+  const flags = document.getElementById("mlFlags");
+  if (flags) {
+    flags.innerHTML = labels.slice(0, 4).map((l, i) => {
+      const pct = Math.round(scores[i] * 100);
+      return `<span class="text-xs px-2 py-1 rounded bg-gray-800 border border-gray-700">${l}: ${pct}%</span>`;
+    }).join("");
+  }
+
+  // Indicators placeholder (you can expand with real on-chain features later)
+  const indicators = document.getElementById("rugPullIndicators");
+  if (indicators) {
+    indicators.innerHTML = `
+      <div class="flex justify-between text-xs text-gray-400">
+        <span>Model rug-probability</span><span class="mono">${riskScore}%</span>
+      </div>
+      <div class="flex justify-between text-xs text-gray-400">
+        <span>Classification top label</span><span class="mono">${labels[0]}</span>
+      </div>
+    `;
+  }
+}
+
+function renderPattern(detections) {
+  // DETR isn’t real chart pattern recognition; keep UI sane with a placeholder mapping
+  setText("patternName", "Experimental Vision Output");
+  setText("patternDescription", "This is a placeholder object-detection model; switch to a chart-trained model for real pattern detection.");
+
+  // Confidence: take top detection score if present
+  const topScore = Array.isArray(detections) && detections[0]?.score ? detections[0].score : 0.2;
+  setText("patternConfidence", `${Math.round(topScore * 100)}%`);
+
+  // Use neutral defaults
+  setText("patternTrend", "Unknown");
+  setText("supportLevel", "S: --");
+  setText("resistanceLevel", "R: --");
+  setText("patternPrediction", "For accurate patterns, use OHLCV-based detection or a chart-specific ML model.");
+}
+
+// ---------- helpers ----------
+function showEl(id, show) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle("hidden", !show);
+}
+
+function setText(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
+function textOf(id) {
+  const el = document.getElementById(id);
+  return el ? el.textContent.trim() : "";
+}
+
+function showAIError(msg) {
+  showEl("aiAnalysisError", true);
+  setText("aiErrorMessage", msg);
+}
+
+function hideAIError() {
+  showEl("aiAnalysisError", false);
+}
+
     
     // Show loading states
     document.getElementById('sentimentPlaceholder').classList.add('hidden');
