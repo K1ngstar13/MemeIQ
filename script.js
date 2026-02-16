@@ -3,17 +3,22 @@ let currentTokenData = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   // Hide loading on initial load (safe)
-  ?.classList.add('hidden');
+  const loading = document.getElementById('loadingState');
+  if (loading) loading.classList.add('hidden');
 
   // Lucide icons (safe)
-  if (window.lucide?.createIcons) if (window.lucide?.createIcons) if (window.lucide?.createIcons) if (window.lucide?.createIcons) lucide.createIcons();
+  if (window.lucide && typeof window.lucide.createIcons === 'function') {
+    window.lucide.createIcons();
+  }
 
   // Enter key to analyze (safe)
-  document.getElementById('contractInput')?.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') analyzeContract();
-  });
+  const input = document.getElementById('contractInput');
+  if (input) {
+    input.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') analyzeContract();
+    });
+  }
 });
-
 
 // Example data loader
 function loadExample(type) {
@@ -738,3 +743,11 @@ function displayRugPullResults(data) {
         box.className = 'mt-4 p-3 rounded-lg border bg-green-900/20 border-green-500/30';
     }
 }
+// Expose functions for inline onclick handlers
+window.analyzeContract = analyzeContract;
+window.resetAnalysis = resetAnalysis;
+window.loadExample = loadExample;
+window.runAIAnalysis = runAIAnalysis;
+window.setAlert = setAlert;
+window.viewChart = viewChart;
+window.copyToClipboard = copyToClipboard;
