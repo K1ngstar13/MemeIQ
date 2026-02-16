@@ -1,0 +1,9 @@
+name = "memenalysis-hf-proxy"
+main = "worker.js"
+compatibility_date = "2026-02-15"
+
+[vars]
+# no secrets here
+
+# Set secret with:
+# wrangler secret put HF_TOKEN
