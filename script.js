@@ -1,16 +1,19 @@
 let currentChart = null;
 let currentTokenData = null;
 
-// Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-  if (window.lucide?.createIcons) lucide.createIcons();
-
+  // Hide loading on initial load (safe)
   document.getElementById('loadingState')?.classList.add('hidden');
 
+  // Lucide icons (safe)
+  if (window.lucide?.createIcons) lucide.createIcons();
+
+  // Enter key to analyze (safe)
   document.getElementById('contractInput')?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') analyzeContract();
   });
 });
+
 
 // Example data loader
 function loadExample(type) {
@@ -122,7 +125,7 @@ async function analyzeContract() {
     initChart(currentTokenData.priceHistory);
     
     // Refresh icons
-    lucide.createIcons();
+    if (window.lucide?.createIcons) lucide.createIcons();
     
     // Scroll to results
     document.getElementById('analysisResults').scrollIntoView({ behavior: 'smooth', block: 'start' });
