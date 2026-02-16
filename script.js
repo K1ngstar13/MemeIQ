@@ -3,10 +3,10 @@ let currentTokenData = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   // Hide loading on initial load (safe)
-  document.getElementById('loadingState')?.classList.add('hidden');
+  ?.classList.add('hidden');
 
   // Lucide icons (safe)
-  if (window.lucide?.createIcons) lucide.createIcons();
+  if (window.lucide?.createIcons) if (window.lucide?.createIcons) if (window.lucide?.createIcons) if (window.lucide?.createIcons) lucide.createIcons();
 
   // Enter key to analyze (safe)
   document.getElementById('contractInput')?.addEventListener('keypress', (e) => {
@@ -22,11 +22,11 @@ function loadExample(type) {
         pepe: '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU',
         shiba: '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R'
     };
-    document.getElementById('contractInput').value = examples[type] || '';
+    document.getElementById('contractInput')?.value = examples[type] || '';
 }
 
 // Reset analysis
-document.getElementById('loadingState').classList.add('hidden');
+.classList.add('hidden');
 
 function resetAnalysis() {
     document.getElementById('searchSection').classList.remove('hidden');
@@ -95,7 +95,7 @@ async function analyzeContract() {
 
     // Show loading
     document.getElementById('searchSection').classList.add('hidden');
-    document.getElementById('loadingState').classList.remove('hidden');
+    .classList.remove('hidden');
     
     // Simulate API steps
     const steps = [
@@ -118,14 +118,14 @@ async function analyzeContract() {
     // Display results
     displayResults(currentTokenData);
     
-    document.getElementById('loadingState').classList.add('hidden');
+    .classList.add('hidden');
     document.getElementById('analysisResults').classList.remove('hidden');
     
     // Initialize chart
     initChart(currentTokenData.priceHistory);
     
     // Refresh icons
-    if (window.lucide?.createIcons) lucide.createIcons();
+    if (window.lucide?.createIcons) if (window.lucide?.createIcons) if (window.lucide?.createIcons) if (window.lucide?.createIcons) if (window.lucide?.createIcons) lucide.createIcons();
     
     // Scroll to results
     document.getElementById('analysisResults').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -304,13 +304,40 @@ caEl.dataset.fullAddress = data.address;
     `).join('');
 }
 
-// Initialize Chart
-function initChart(historyData) {
-    const ctx = document.getElementById('volumeChart').getContext('2d');
-    
-    if (currentChart) {
-        currentChart.destroy();
-    }
+// Initialize Chart (safe + debuggable)
+function initChart(historyData = []) {
+  if (!window.Chart) {
+    console.warn('Chart.js not loaded. Did you include chart.umd.min.js BEFORE script.js?');
+    return;
+  }
+
+  const canvas = document.getElementById('volumeChart');
+  if (!canvas) {
+    console.warn('#volumeChart canvas not found');
+    return;
+  }
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    console.warn('Could not get 2d context from #volumeChart');
+    return;
+  }
+
+  if (!Array.isArray(historyData) || historyData.length === 0) {
+    console.warn('initChart called with empty historyData');
+    return;
+  }
+
+  // If you have a global currentChart, clean it up:
+  if (window.currentChart) {
+    window.currentChart.destroy();
+    window.currentChart = null;
+  }
+
+  // ✅ Your existing Chart() code goes here
+  // window.currentChart = new Chart(ctx, {...});
+}
+
 
     currentChart = new Chart(ctx, {
         type: 'line',
@@ -463,7 +490,7 @@ async function runAIAnalysis() {
             document.getElementById('rugPullResult').classList.remove('hidden');
         }
 
-        lucide.createIcons();
+        if (window.lucide?.createIcons) if (window.lucide?.createIcons) if (window.lucide?.createIcons) lucide.createIcons();
         showToast('AI Analysis Complete!');
     } catch (error) {
         console.error('AI Analysis error:', error);
