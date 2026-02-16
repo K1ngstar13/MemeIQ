@@ -1,18 +1,15 @@
 let currentChart = null;
 let currentTokenData = null;
 
-// Initialize Lucide icons when DOM is loaded
+// Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('loadingState')?.classList.add('hidden');
-});
+  if (window.lucide?.createIcons) lucide.createIcons();
 
-    
-    // Enter key support for search
-    document.getElementById('contractInput').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            analyzeContract();
-        }
-    });
+  document.getElementById('loadingState')?.classList.add('hidden');
+
+  document.getElementById('contractInput')?.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') analyzeContract();
+  });
 });
 
 // Example data loader
