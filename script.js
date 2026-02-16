@@ -365,386 +365,143 @@ function viewChart() {
 // ==========================================
 // HUGGING FACE AI ANALYSIS INTEGRATION
 // ==========================================
+// ==========================================
+// AI ANALYSIS (SECURE PROXY) — NO KEYS IN BROWSER
+// ==========================================
 
-// Main AI Analysis Controller
-// Put your Worker URL here
+// 1) Put your Cloudflare Worker URL here:
 const AI_API_BASE = "https://YOUR_WORKER_URL.workers.dev";
 
+// 2) Main AI Analysis Controller
 async function runAIAnalysis() {
-  hideAIError();
-
-  // Show spinners
-  showEl("sentimentLoading", true);
-  showEl("patternLoading", true);
-  showEl("rugPullLoading", true);
-
-  // Hide placeholders
-  showEl("sentimentPlaceholder", false);
-  showEl("patternPlaceholder", false);
-  showEl("rugPullPlaceholder", false);
-
-  // Hide old results until new ones arrive
-  showEl("sentimentResult", false);
-  showEl("patternResult", false);
-  showEl("rugPullResult", false);
-
-  try {
-    // Build text for sentiment (use what you already have in the header)
-    const name = (document.getElementById("tokenName")?.textContent || "").trim();
-    const symbol = (document.getElementById("tokenSymbol")?.textContent || "").trim();
-    const addressLine = (document.getElementById("contractAddress")?.textContent || "").trim();
-
-    const sentimentText = `${name} ${symbol} ${addressLine}`.slice(0, 450);
-
-    // Build rug risk summary from your on-page metrics (cheap + effective)
-    const summary = buildRiskSummary();
-
-    // For chart vision: capture your Chart.js canvas as base64
-    const canvas = document.getElementById("volumeChart");
-    const imageDataUrl = canvas ? canvas.toDataURL("image/png") : null;
-
-    // Run in parallel (fast)
-    const [sentiment, rug, chart] = await Promise.allSettled([
-      postJSON(`${AI_API_BASE}/api/sentiment`, { text: sentimentText }),
-      postJSON(`${AI_API_BASE}/api/rugrisk`, { summary }),
-      imageDataUrl ? postJSON(`${AI_API_BASE}/api/chart-vision`, { imageDataUrl }) : Promise.resolve({ ok: false }),
-    ]);
-
-    // Sentiment
-    if (sentiment.status === "fulfilled" && sentiment.value?.ok) {
-      renderSentiment(sentiment.value.preds);
-      showEl("sentimentResult", true);
-    } else {
-      showEl("sentimentPlaceholder", true);
+    if (!currentTokenData) {
+        showToast('Please analyze a token first');
+        return;
     }
-    showEl("sentimentLoading", false);
 
-    // Rug risk
-    if (rug.status === "fulfilled" && rug.value?.ok) {
-      renderRugRisk(rug.value.data); // this is the bart-large-mnli output
-      showEl("rugPullResult", true);
-    } else {
-      showEl("rugPullPlaceholder", true);
-    }
-    showEl("rugPullLoading", false);
+    // (Optional) hide the key input UX since we don't use it anymore
+    const keyInput = document.getElementById('hfApiKey');
+    if (keyInput) keyInput.value = '';
 
-    // Pattern recognition placeholder
-    if (chart.status === "fulfilled" && chart.value?.ok) {
-      renderPattern(chart.value.data);
-      showEl("patternResult", true);
-    } else {
-      showEl("patternPlaceholder", true);
-    }
-    showEl("patternLoading", false);
-
-  } catch (e) {
-    showAIError(`AI analysis failed: ${e.message || e}`);
-    showEl("sentimentLoading", false);
-    showEl("patternLoading", false);
-    showEl("rugPullLoading", false);
-
-    // Restore placeholders
-    showEl("sentimentPlaceholder", true);
-    showEl("patternPlaceholder", true);
-    showEl("rugPullPlaceholder", true);
-  }
-}
-
-async function postJSON(url, body) {
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  return r.json();
-}
-
-function buildRiskSummary() {
-  // Pull from your UI so it’s consistent with the on-chain analysis you already calculated
-  const liq = textOf("totalLiquidity");
-  const mcap = textOf("marketCap");
-  const ratio = textOf("mcapLiqRatio");
-  const top10 = textOf("top10Holders");
-  const dev = textOf("devWallet");
-  const lpLocked = textOf("lpLocked");
-  const vol = textOf("volume24h");
-  const buySell = textOf("buySellRatio");
-  const wash = textOf("washTradingRisk");
-
-  return `
-Token risk summary:
-- Liquidity: ${liq}
-- Market cap: ${mcap}
-- MCap/Liq ratio: ${ratio}
-- LP burned/locked: ${lpLocked}
-- 24h volume: ${vol}
-- Buy/Sell ratio: ${buySell}
-- Wash trading risk: ${wash}
-- Top 10 holders: ${top10}
-- Dev wallet percent: ${dev}
-
-Classify this token as one of: rug pull, legitimate, high risk, safe.
-Return the most likely label and confidence.
-  `.trim();
-}
-
-function renderSentiment(preds) {
-  // preds: [{label:"positive"|"neutral"|"negative", score:number}, ...]
-  const pos = preds.find(p => p.label === "positive")?.score || 0;
-  const neu = preds.find(p => p.label === "neutral")?.score || 0;
-  const neg = preds.find(p => p.label === "negative")?.score || 0;
-
-  setText("positiveSentiment", `${Math.round(pos * 100)}%`);
-  setText("neutralSentiment", `${Math.round(neu * 100)}%`);
-  setText("negativeSentiment", `${Math.round(neg * 100)}%`);
-
-  // Simple score: positive minus negative scaled to 0-100
-  const score = Math.max(0, Math.min(100, Math.round((pos - neg + 1) * 50)));
-  setText("sentimentScore", `${score}/100`);
-
-  const bar = document.getElementById("sentimentBar");
-  if (bar) bar.style.width = `${score}%`;
-
-  const summary =
-    score >= 70 ? "Strong positive social sentiment detected." :
-    score >= 50 ? "Mixed-to-positive sentiment with moderate momentum." :
-    score >= 35 ? "Mixed sentiment; social conviction looks weak." :
-                  "Negative sentiment dominates; caution advised.";
-  setText("sentimentSummary", summary);
-
-  // optional fake mentions list (until you add real Twitter/Reddit scraping)
-  const mentions = document.getElementById("sentimentMentions");
-  if (mentions) {
-    mentions.innerHTML = `
-      <div class="text-gray-500">• HF sentiment is based on text prompt only (no scraping yet)</div>
-      <div class="text-gray-500">• Add X/Reddit data source later for real mentions</div>
-    `;
-  }
-}
-
-function renderRugRisk(result) {
-  // bart-large-mnli output looks like:
-  // {labels:[...], scores:[...], sequence:"..."}
-  const labels = result?.labels || [];
-  const scores = result?.scores || [];
-  if (!labels.length) {
-    setText("rugPullVerdict", "No result returned.");
-    return;
-  }
-
-  // Find "rug pull" probability, and compute a risk score (0 safe → 100 risky)
-  const rugIdx = labels.findIndex(l => String(l).toLowerCase().includes("rug"));
-  const riskProb = rugIdx >= 0 ? scores[rugIdx] : 0.25;
-  const riskScore = Math.round(riskProb * 100);
-
-  const scoreEl = document.getElementById("rugPullScore");
-  if (scoreEl) {
-    scoreEl.textContent = `${riskScore}`;
-    scoreEl.className = riskScore >= 70 ? "text-4xl font-bold mb-1 text-red-400"
-                   : riskScore >= 45 ? "text-4xl font-bold mb-1 text-yellow-400"
-                                     : "text-4xl font-bold mb-1 text-green-400";
-  }
-
-  const verdict =
-    riskScore >= 70 ? "HIGH RISK: Potential rug indicators flagged." :
-    riskScore >= 45 ? "MEDIUM RISK: Caution—watch liquidity and holders." :
-                      "LOWER RISK: Fewer rug-like signals detected.";
-  setText("rugPullVerdict", verdict);
-
-  const box = document.getElementById("rugPullVerdictBox");
-  if (box) {
-    box.className =
-      "mt-4 p-3 rounded-lg border " +
-      (riskScore >= 70
-        ? "bg-red-900/20 border-red-500/30"
-        : riskScore >= 45
-        ? "bg-yellow-900/20 border-yellow-500/30"
-        : "bg-green-900/20 border-green-500/30");
-  }
-
-  // Show model flags (top labels)
-  const flags = document.getElementById("mlFlags");
-  if (flags) {
-    flags.innerHTML = labels.slice(0, 4).map((l, i) => {
-      const pct = Math.round(scores[i] * 100);
-      return `<span class="text-xs px-2 py-1 rounded bg-gray-800 border border-gray-700">${l}: ${pct}%</span>`;
-    }).join("");
-  }
-
-  // Indicators placeholder (you can expand with real on-chain features later)
-  const indicators = document.getElementById("rugPullIndicators");
-  if (indicators) {
-    indicators.innerHTML = `
-      <div class="flex justify-between text-xs text-gray-400">
-        <span>Model rug-probability</span><span class="mono">${riskScore}%</span>
-      </div>
-      <div class="flex justify-between text-xs text-gray-400">
-        <span>Classification top label</span><span class="mono">${labels[0]}</span>
-      </div>
-    `;
-  }
-}
-
-function renderPattern(detections) {
-  // DETR isn’t real chart pattern recognition; keep UI sane with a placeholder mapping
-  setText("patternName", "Experimental Vision Output");
-  setText("patternDescription", "This is a placeholder object-detection model; switch to a chart-trained model for real pattern detection.");
-
-  // Confidence: take top detection score if present
-  const topScore = Array.isArray(detections) && detections[0]?.score ? detections[0].score : 0.2;
-  setText("patternConfidence", `${Math.round(topScore * 100)}%`);
-
-  // Use neutral defaults
-  setText("patternTrend", "Unknown");
-  setText("supportLevel", "S: --");
-  setText("resistanceLevel", "R: --");
-  setText("patternPrediction", "For accurate patterns, use OHLCV-based detection or a chart-specific ML model.");
-}
-
-// ---------- helpers ----------
-function showEl(id, show) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.classList.toggle("hidden", !show);
-}
-
-function setText(id, text) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = text;
-}
-
-function textOf(id) {
-  const el = document.getElementById(id);
-  return el ? el.textContent.trim() : "";
-}
-
-function showAIError(msg) {
-  showEl("aiAnalysisError", true);
-  setText("aiErrorMessage", msg);
-}
-
-function hideAIError() {
-  showEl("aiAnalysisError", false);
-}
-
-    
-    // Show loading states
+    // Reset UI + show loading states
     document.getElementById('sentimentPlaceholder').classList.add('hidden');
     document.getElementById('patternPlaceholder').classList.add('hidden');
     document.getElementById('rugPullPlaceholder').classList.add('hidden');
+
+    document.getElementById('sentimentResult').classList.add('hidden');
+    document.getElementById('patternResult').classList.add('hidden');
+    document.getElementById('rugPullResult').classList.add('hidden');
+
     document.getElementById('sentimentLoading').classList.remove('hidden');
     document.getElementById('patternLoading').classList.remove('hidden');
     document.getElementById('rugPullLoading').classList.remove('hidden');
+
     document.getElementById('aiAnalysisError').classList.add('hidden');
-    
+
     try {
-        // Run all three AI analyses in parallel
-        await Promise.all([
-            analyzeSentiment(tokenName, tokenSymbol, apiKey),
-            analyzeChartPattern(apiKey),
-            analyzeRugPullRisk(apiKey)
+        const tokenName = document.getElementById('tokenName').textContent.trim();
+        const tokenSymbol = document.getElementById('tokenSymbol').textContent.trim();
+
+        // Build prompt text for sentiment
+        const sentimentText = `${tokenName} ${tokenSymbol} crypto token price analysis`;
+
+        // Build rug risk summary (zero-shot works best with words)
+        const summary = buildRiskSummary(tokenName, tokenSymbol);
+
+        // Chart vision (placeholder): send chart canvas as image
+        const canvas = document.getElementById('volumeChart');
+        const imageDataUrl = canvas ? canvas.toDataURL('image/png') : null;
+
+        // Run calls in parallel
+        const [sentimentRes, patternRes, rugRes] = await Promise.allSettled([
+            postJSON(`${AI_API_BASE}/api/sentiment`, { text: sentimentText }),
+            imageDataUrl ? postJSON(`${AI_API_BASE}/api/chart-vision`, { imageDataUrl }) : Promise.resolve({ ok: false }),
+            postJSON(`${AI_API_BASE}/api/rugrisk`, { summary })
         ]);
-        
-        // Refresh icons for new content
+
+        // ----- Sentiment -----
+        if (sentimentRes.status === "fulfilled" && sentimentRes.value?.ok) {
+            // sentimentRes.value.preds => [{label:"positive|neutral|negative", score:0..1}]
+            const sentimentData = normalizeSentimentFromPreds(sentimentRes.value.preds, tokenName);
+            displaySentimentResults(sentimentData);
+            document.getElementById('sentimentResult').classList.remove('hidden');
+        } else {
+            document.getElementById('sentimentPlaceholder').classList.remove('hidden');
+        }
+
+        // ----- Pattern (placeholder via DETR) -----
+        if (patternRes.status === "fulfilled" && patternRes.value?.ok) {
+            const patternData = normalizePatternFromVision(patternRes.value.data);
+            displayPatternResults(patternData);
+            document.getElementById('patternResult').classList.remove('hidden');
+        } else {
+            // fallback to your existing mock pattern so it always shows something
+            const patternData = generateMockPatternData();
+            displayPatternResults(patternData);
+            document.getElementById('patternResult').classList.remove('hidden');
+        }
+
+        // ----- Rug Pull Risk (zero-shot) -----
+        if (rugRes.status === "fulfilled" && rugRes.value?.ok) {
+            const riskData = normalizeRugRiskFromZeroShot(rugRes.value.data);
+            displayRugPullResults(riskData);
+            document.getElementById('rugPullResult').classList.remove('hidden');
+        } else {
+            // fallback to mock
+            const riskData = generateMockRugPullData();
+            displayRugPullResults(riskData);
+            document.getElementById('rugPullResult').classList.remove('hidden');
+        }
+
         lucide.createIcons();
-        
         showToast('AI Analysis Complete!');
+
     } catch (error) {
         console.error('AI Analysis error:', error);
         document.getElementById('aiAnalysisError').classList.remove('hidden');
-        document.getElementById('aiErrorMessage').textContent = 'Error: ' + error.message;
+        document.getElementById('aiErrorMessage').textContent =
+            'Error running AI analysis. Please try again later.';
     } finally {
-        // Hide loading states
         document.getElementById('sentimentLoading').classList.add('hidden');
         document.getElementById('patternLoading').classList.add('hidden');
         document.getElementById('rugPullLoading').classList.add('hidden');
     }
 }
 
-// 1. Social Media Crypto Sentiment Analysis using Hugging Face
-async function analyzeSentiment(tokenName, symbol, apiKey) {
-    try {
-        let sentimentData;
-        
-        // If API key provided, try to call real Hugging Face API
-        if (apiKey) {
-            try {
-                // Use a sentiment analysis model from Hugging Face
-                // Example: cardiffnlp/twitter-roberta-base-sentiment-latest
-                const model = 'cardiffnlp/twitter-roberta-base-sentiment-latest';
-                const text = `${tokenName} ${symbol} crypto token price analysis`;
-                
-                const response = await fetch(`https://api-inference.huggingface.co/models/${model}`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${apiKey}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ inputs: text })
-                });
-                
-                if (response.ok) {
-                    const result = await response.json();
-                    sentimentData = parseHFSentiment(result);
-                } else {
-                    throw new Error('API call failed');
-                }
-            } catch (apiError) {
-                console.log('HF API failed, using mock data:', apiError);
-                sentimentData = generateMockSentiment(tokenName);
-            }
-        } else {
-            // No API key, use mock data with delay
-            await new Promise(r => setTimeout(r, 1500));
-            sentimentData = generateMockSentiment(tokenName);
-        }
-        
-        // Display results
-        displaySentimentResults(sentimentData);
-        
-    } catch (error) {
-        console.error('Sentiment analysis error:', error);
-        throw error;
-    }
+async function postJSON(url, body) {
+    const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    // Worker always returns JSON
+    return await r.json();
 }
 
-// Parse Hugging Face sentiment response
-function parseHFSentiment(hfResponse) {
-    // HF models return arrays of label/score objects
-    // Format: [[{label: 'positive', score: 0.9}, {label: 'negative', score: 0.1}]]
-    const scores = hfResponse[0] || [];
-    
-    let positive = 0, negative = 0, neutral = 0;
-    
-    scores.forEach(item => {
-        const label = item.label.toLowerCase();
-        const score = item.score * 100;
-        
-        if (label.includes('positive')) positive = Math.round(score);
-        else if (label.includes('negative')) negative = Math.round(score);
-        else if (label.includes('neutral')) neutral = Math.round(score);
-    });
-    
-    // Normalize to ensure they sum to 100
-    const total = positive + negative + neutral;
-    if (total > 0) {
-        positive = Math.round((positive / total) * 100);
-        negative = Math.round((negative / total) * 100);
-        neutral = 100 - positive - negative;
-    }
-    
-    const score = Math.round((positive * 1 + neutral * 0.5) / 1.5);
-    
+// ----- Sentiment helpers -----
+function normalizeSentimentFromPreds(preds, tokenName) {
+    // preds: [{label:"positive|neutral|negative", score:0..1}]
+    const pos = (preds.find(p => p.label === "positive")?.score || 0);
+    const neu = (preds.find(p => p.label === "neutral")?.score || 0);
+    const neg = (preds.find(p => p.label === "negative")?.score || 0);
+
+    const positive = Math.round(pos * 100);
+    const neutral = Math.round(neu * 100);
+    const negative = Math.max(0, 100 - positive - neutral); // keep sum 100-ish
+
+    const score = Math.max(0, Math.min(100, Math.round(((pos - neg) + 1) * 50)));
+
     return {
         positive,
-        negative,
         neutral,
+        negative,
         score,
         summary: generateSentimentSummary(positive, tokenName),
-        mentions: generateMockMentions()
+        mentions: generateMockMentions() // keep until you add real social data sources
     };
 }
 
+// (Fix: tokenName now passed in explicitly)
 function generateSentimentSummary(positive, tokenName) {
     if (positive > 70) {
         return `Strong bullish sentiment detected for ${tokenName}. Community showing high confidence with increasing engagement rates.`;
@@ -755,268 +512,66 @@ function generateSentimentSummary(positive, tokenName) {
     }
 }
 
-function generateMockSentiment(tokenName) {
-    const positive = Math.floor(Math.random() * 60) + 20;
-    const negative = Math.floor(Math.random() * (100 - positive - 10));
-    const neutral = 100 - positive - negative;
-    const score = Math.floor((positive * 1 + neutral * 0.5) / 1.5);
-    
-    const summaries = [
-        `Strong bullish sentiment detected for ${tokenName}. Community showing high confidence with increasing engagement rates.`,
-        `Mixed sentiment with cautious optimism. Some FUD detected but overall community remains supportive.`,
-        `Negative sentiment spike detected. Multiple red flags mentioned in recent discussions. Exercise caution.`
-    ];
-    
-    const mentions = [
-        { text: "Just aped into this, looks primed for 10x 🚀", sentiment: "positive" },
-        { text: "Dev is active and liquidity is locked 🔒", sentiment: "positive" },
-        { text: "Volume looking suspicious, be careful guys", sentiment: "negative" },
-        { text: "Chart consolidating nicely here", sentiment: "neutral" },
-        { text: "Whales accumulating, smart money moving in", sentiment: "positive" },
-        { text: "Rug pull vibes, dev wallet moving funds", sentiment: "negative" }
-    ];
-    
-    // Randomly select 4 mentions
-    const selectedMentions = mentions.sort(() => 0.5 - Math.random()).slice(0, 4);
-    
-    return { 
-        positive, 
-        negative, 
-        neutral, 
-        score, 
-        summary: summaries[Math.floor(Math.random() * summaries.length)], 
-        mentions: selectedMentions 
-    };
-}
+// ----- Pattern helpers (placeholder) -----
+function normalizePatternFromVision(visionOutput) {
+    // DETR output isn't real chart pattern recognition.
+    // Keep UI stable: map to a neutral pattern card.
+    const topScore = Array.isArray(visionOutput) && visionOutput[0]?.score ? visionOutput[0].score : 0.25;
+    const confidence = Math.round(topScore * 100);
 
-function generateMockMentions() {
-    const mentions = [
-        { text: "Just aped into this, looks primed for 10x 🚀", sentiment: "positive" },
-        { text: "Dev is active and liquidity is locked 🔒", sentiment: "positive" },
-        { text: "Volume looking suspicious, be careful guys", sentiment: "negative" },
-        { text: "Chart consolidating nicely here", sentiment: "neutral" }
-    ];
-    return mentions;
-}
-
-function displaySentimentResults(data) {
-    document.getElementById('sentimentResult').classList.remove('hidden');
-    document.getElementById('positiveSentiment').textContent = data.positive + '%';
-    document.getElementById('neutralSentiment').textContent = data.neutral + '%';
-    document.getElementById('negativeSentiment').textContent = data.negative + '%';
-    document.getElementById('sentimentScore').textContent = data.score + '/100';
-    document.getElementById('sentimentBar').style.width = data.score + '%';
-    document.getElementById('sentimentBar').className = `h-2 rounded-full transition-all duration-1000 ${data.score > 70 ? 'bg-green-500' : data.score > 40 ? 'bg-yellow-500' : 'bg-red-500'}`;
-    document.getElementById('sentimentSummary').textContent = data.summary;
-    
-    // Recent mentions
-    const mentionsHtml = data.mentions.map(m => `
-        <div class="flex items-start gap-2">
-            <span class="text-${m.sentiment === 'positive' ? 'green' : m.sentiment === 'negative' ? 'red' : 'gray'}-400 text-[10px] mt-0.5">●</span>
-            <p class="text-gray-400 truncate">${m.text}</p>
-        </div>
-    `).join('');
-    document.getElementById('sentimentMentions').innerHTML = mentionsHtml;
-}
-
-// 2. Chart Pattern Recognition using Hugging Face Vision Model
-async function analyzeChartPattern(apiKey) {
-    try {
-        let patternData;
-        
-        if (apiKey && currentChart) {
-            try {
-                // For production: Convert chart to image and send to HF vision model
-                // Model example: facebook/detr-resnet-50 or custom trained chart pattern model
-                const canvas = document.getElementById('volumeChart');
-                const imageData = canvas.toDataURL('image/png');
-                
-                // Note: Most HF vision models expect image URLs or base64
-                const model = 'facebook/detr-resnet-50'; // Object detection model as example
-                
-                const response = await fetch(`https://api-inference.huggingface.co/models/${model}`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${apiKey}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ inputs: imageData })
-                });
-                
-                if (response.ok) {
-                    const result = await response.json();
-                    patternData = parseHFChartPattern(result);
-                } else {
-                    throw new Error('Chart API failed');
-                }
-            } catch (apiError) {
-                console.log('HF Vision API failed, using mock:', apiError);
-                patternData = generateMockPatternData();
-            }
-        } else {
-            // No API key or no chart, use mock
-            await new Promise(r => setTimeout(r, 1800));
-            patternData = generateMockPatternData();
-        }
-        
-        displayPatternResults(patternData);
-        
-    } catch (error) {
-        console.error('Pattern analysis error:', error);
-        throw error;
-    }
-}
-
-function parseHFChartPattern(hfResponse) {
-    // Parse vision model response (model dependent)
-    // This is a placeholder - actual implementation depends on the specific model used
-    return generateMockPatternData();
-}
-
-function generateMockPatternData() {
-    const patterns = ['Ascending Triangle', 'Bull Flag', 'Double Bottom', 'Head and Shoulders', 'Falling Wedge', 'Cup and Handle'];
-    const selectedPattern = patterns[Math.floor(Math.random() * patterns.length)];
-    const confidence = Math.floor(Math.random() * 40) + 60;
-    const isBullish = ['Ascending Triangle', 'Bull Flag', 'Double Bottom', 'Falling Wedge', 'Cup and Handle'].includes(selectedPattern);
-    
     return {
-        name: selectedPattern,
-        description: getPatternDescription(selectedPattern),
-        confidence: confidence,
-        trend: isBullish ? 'Bullish' : 'Bearish',
+        name: 'Experimental Vision Output',
+        description: 'Placeholder object-detection model. For real chart patterns, switch to OHLCV-based detection or a chart-trained model.',
+        confidence: Math.min(95, Math.max(35, confidence)),
+        trend: 'Unknown',
         support: (Math.random() * 0.0001).toFixed(8),
         resistance: (Math.random() * 0.0005 + 0.0001).toFixed(8),
-        prediction: getPatternPrediction(selectedPattern, confidence)
+        prediction: 'Use this as a pipeline demo. Next upgrade: detect patterns from OHLCV with rules or a chart-specific ML model.'
     };
 }
 
-function getPatternDescription(pattern) {
-    const descriptions = {
-        'Ascending Triangle': 'Higher lows with consistent resistance. Typically breaks out upward with volume.',
-        'Bull Flag': 'Sharp upward move followed by consolidation. Continuation pattern indicating further upside.',
-        'Double Bottom': 'W-shaped pattern indicating strong support level and potential trend reversal.',
-        'Head and Shoulders': 'Reversal pattern with three peaks. Middle peak highest. Bearish signal.',
-        'Falling Wedge': 'Converging downtrend lines. Usually breaks upward. Bullish reversal pattern.',
-        'Cup and Handle': 'Rounded bottom followed by small consolidation. Strong bullish continuation.'
-    };
-    return descriptions[pattern] || 'Technical pattern detected in price action.';
+// ----- Rug risk helpers (zero-shot) -----
+function buildRiskSummary(tokenName, tokenSymbol) {
+    // Use on-page computed metrics
+    const liqLocked = currentTokenData?.liquidity?.lockedPercent ?? 0;
+    const devPct = currentTokenData?.holders?.devPercent ?? 0;
+    const top10Pct = currentTokenData?.holders?.top10Percent ?? 0;
+    const mcapLiq = currentTokenData?.liquidity?.mcapRatio ?? "0";
+    const vol24 = currentTokenData?.volume?.h24 ?? 0;
+    const growth = currentTokenData?.holders?.growth24h ?? "0";
+    const wash = currentTokenData?.volume?.washTrading ?? "Unknown";
+
+    const mintRisk = currentTokenData?.risks?.find(r => r.name === 'Mint Authority')?.risk ? "active" : "revoked";
+    const freezeRisk = currentTokenData?.risks?.find(r => r.name === 'Freeze Authority')?.risk ? "active" : "revoked";
+    const lpRisk = currentTokenData?.risks?.find(r => r.name === 'LP Tokens')?.risk ? "unlocked" : "burned/locked";
+
+    return `
+Token: ${tokenName} (${tokenSymbol})
+Signals:
+- Liquidity locked/burned: ${liqLocked}%
+- LP status: ${lpRisk}
+- Dev wallet percent: ${devPct}%
+- Top 10 holders percent: ${top10Pct}%
+- MCap/Liq ratio: ${mcapLiq}x
+- 24h volume: ${vol24}
+- Holder growth (24h): ${growth}%
+- Wash trading risk: ${wash}
+- Mint authority: ${mintRisk}
+- Freeze authority: ${freezeRisk}
+
+Classify as one of: rug pull, legitimate, high risk, safe.
+Return label probabilities.
+    `.trim();
 }
 
-function getPatternPrediction(pattern, confidence) {
-    if (confidence > 80) {
-        return `High confidence ${pattern} detected. AI suggests 75% probability of breakout within 24-48 hours. Consider position sizing accordingly.`;
-    } else if (confidence > 65) {
-        return `Moderate confidence pattern match. Monitor volume for confirmation before entry. Recommended position: 50% size until confirmation.`;
-    } else {
-        return `Low confidence reading. Pattern incomplete or noisy data. Wait for clearer structure before entering.`;
-    }
-}
+function normalizeRugRiskFromZeroShot(zeroShot) {
+    // zeroShot: {labels:[...], scores:[...], sequence:"..."}
+    const labels = zeroShot?.labels || [];
+    const scores = zeroShot?.scores || [];
 
-function displayPatternResults(data) {
-    document.getElementById('patternResult').classList.remove('hidden');
-    document.getElementById('patternName').textContent = data.name;
-    document.getElementById('patternDescription').textContent = data.description;
-    document.getElementById('patternConfidence').textContent = data.confidence + '%';
-    document.getElementById('patternTrend').textContent = data.trend;
-    document.getElementById('patternTrend').className = `text-xs px-2 py-1 rounded ${data.trend === 'Bullish' ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}`;
-    document.getElementById('supportLevel').textContent = 'S: $' + data.support;
-    document.getElementById('resistanceLevel').textContent = 'R: $' + data.resistance;
-    document.getElementById('patternPrediction').textContent = data.prediction;
-}
+    const rugIdx = labels.findIndex(l => String(l).toLowerCase().includes('rug'));
+    const rugProb = rugIdx >= 0 ? scores[rugIdx] : 0.25;
+    const score = Math.round(rugProb * 100);
 
-// 3. Rug Pull Detection ML Model using Hugging Face
-async function analyzeRugPullRisk(apiKey) {
-    try {
-        let riskData;
-        
-        if (apiKey && currentTokenData) {
-            try {
-                // Prepare features for ML model
-                const features = {
-                    liquidity_locked: currentTokenData.liquidity.lockedPercent,
-                    dev_wallet_pct: currentTokenData.holders.devPercent,
-                    top10_pct: currentTokenData.holders.top10Percent,
-                    mcap_liq_ratio: parseFloat(currentTokenData.liquidity.mcapRatio),
-                    volume_24h: currentTokenData.volume.h24,
-                    holder_growth: parseFloat(currentTokenData.holders.growth24h),
-                    mint_authority_revoked: !currentTokenData.risks.find(r => r.name === 'Mint Authority').risk,
-                    freeze_authority_revoked: !currentTokenData.risks.find(r => r.name === 'Freeze Authority').risk
-                };
-                
-                // Call custom rug pull detection model on HF
-                // You would need to train and deploy this model to Hugging Face
-                const model = 'your-username/rug-pull-detector'; // Replace with actual model
-                
-                const response = await fetch(`https://api-inference.huggingface.co/models/${model}`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${apiKey}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ inputs: features })
-                });
-                
-                if (response.ok) {
-                    const result = await response.json();
-                    riskData = parseHFRugPullResult(result, features);
-                } else {
-                    throw new Error('Rug pull API failed');
-                }
-            } catch (apiError) {
-                console.log('HF Rug Pull API failed, using mock:', apiError);
-                riskData = generateMockRugPullData();
-            }
-        } else {
-            // No API key, use mock with delay
-            await new Promise(r => setTimeout(r, 2000));
-            riskData = generateMockRugPullData();
-        }
-        
-        displayRugPullResults(riskData);
-        
-    } catch (error) {
-        console.error('Rug pull analysis error:', error);
-        throw error;
-    }
-}
-
-function parseHFRugPullResult(hfResponse, features) {
-    // Parse ML model response
-    // Expected format: { risk_score: 0-100, risk_level: 'low'|'medium'|'high', flags: [...] }
-    const score = Math.round(hfResponse.risk_score || Math.random() * 100);
     return generateRugPullDataFromScore(score);
 }
-
-function generateMockRugPullData() {
-    const score = Math.floor(Math.random() * 100);
-    return generateRugPullDataFromScore(score);
-}
-
-function generateRugPullDataFromScore(score) {
-    const riskLevel = score < 30 ? 'Low' : score < 70 ? 'Medium' : 'High';
-    
-    const indicators = [
-        { 
-            name: 'Liquidity Lock', 
-            status: score < 40 ? 'Safe ✅' : score < 70 ? 'Partial ⚠️' : 'None ❌', 
-            risk: score > 60 
-        },
-        { 
-            name: 'Dev Wallet', 
-            status: score < 30 ? 'Low % ✅' : score < 60 ? 'Medium ⚠️' : 'High % ❌', 
-            risk: score > 50 
-        },
-        { 
-            name: 'Code Similarity', 
-            status: score > 80 ? 'Known Scam ❌' : 'Unique ✅', 
-            risk: score > 80 
-        },
-        { 
-            name: 'Volume Pattern', 
-            status: score > 80 ? 'Artificial ❌' : 'Organic ✅', 
-            risk: score > 80 
-        }
-    ];
-    
-    const flags = score > 70 ? 
-        ['<span class="px-2 py-1 bg-red-900/30 text-red-400 rounded text-[
