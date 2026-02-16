@@ -27,7 +27,9 @@ function loadExample(type) {
         pepe: '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU',
         shiba: '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R'
     };
-    document.getElementById('contractInput')?.value = examples[type] || '';
+  
+     const input = document.getElementById('contractInput');
+if (input) input.value = examples[type] || '';
 }
 
 // Reset analysis
@@ -751,3 +753,9 @@ window.runAIAnalysis = runAIAnalysis;
 window.setAlert = setAlert;
 window.viewChart = viewChart;
 window.copyToClipboard = copyToClipboard;
+
+window.loadExample = loadExample;
+window.analyzeContract = analyzeContract;
+window.resetAnalysis = resetAnalysis;
+window.runAIAnalysis = runAIAnalysis;
+
