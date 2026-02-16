@@ -2,8 +2,10 @@ let currentChart = null;
 let currentTokenData = null;
 
 // Initialize Lucide icons when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
-    lucide.createIcons();
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('loadingState')?.classList.add('hidden');
+});
+
     
     // Enter key support for search
     document.getElementById('contractInput').addEventListener('keypress', function(e) {
@@ -476,19 +478,30 @@ async function runAIAnalysis() {
 }
 
 async function postJSON(url, body) {
-    const r = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-    });
-    return await r.json();
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+
+  let data;
+  try {
+    data = await r.json();
+  } catch {
+    data = { ok: false, error: `Non-JSON response (${r.status})` };
+  }
+
+  if (typeof data.ok !== 'boolean') data.ok = r.ok;
+  if (!r.ok && !data.error) data.error = `HTTP ${r.status}`;
+
+  return data;
 }
 
 // ---------- Sentiment helpers ----------
-function normalizeSentimentFromPreds(preds, tokenName) {
-    const pos = (preds.find(p => p.label === 'positive')?.score || 0);
-    const neu = (preds.find(p => p.label === 'neutral')?.score || 0);
-    const neg = (preds.find(p => p.label === 'negative')?.score || 0);
+function normalizeSentimentFromPreds(preds = [], tokenName) {
+  const pos = (preds.find(p => p.label === 'positive')?.score || 0);
+  const neu = (preds.find(p => p.label === 'neutral')?.score || 0);
+  const neg = (preds.find(p => p.label === 'negative')?.score || 0);
 
     const positive = Math.round(pos * 100);
     const neutral = Math.round(neu * 100);
