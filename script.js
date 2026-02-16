@@ -24,6 +24,8 @@ function loadExample(type) {
 }
 
 // Reset analysis
+document.getElementById('loadingState').classList.add('hidden');
+
 function resetAnalysis() {
     document.getElementById('searchSection').classList.remove('hidden');
     document.getElementById('analysisResults').classList.add('hidden');
@@ -46,10 +48,19 @@ function resetAnalysis() {
 }
 
 // Copy to clipboard
-function copyToClipboard(text) {
-    navigator.clipboard.writeText(text.replace('Address: ', ''));
+function copyToClipboard(textOrEl) {
+    let toCopy = '';
+
+    if (typeof textOrEl === 'string') {
+        toCopy = textOrEl.replace('Address: ', '');
+    } else {
+        toCopy = textOrEl.dataset.fullAddress || textOrEl.textContent.replace('Address: ', '');
+    }
+
+    navigator.clipboard.writeText(toCopy);
     showToast('Address copied to clipboard!');
 }
+
 
 // Show toast notification
 function showToast(message) {
@@ -191,7 +202,10 @@ function displayResults(data) {
     document.getElementById('tokenName').textContent = data.name;
     document.getElementById('tokenSymbol').textContent = data.symbol;
     document.getElementById('tokenImage').src = data.image;
-    document.getElementById('contractAddress').textContent = `Address: ${data.address.slice(0, 8)}...${data.address.slice(-8)}`;
+    const caEl = document.getElementById('contractAddress');
+caEl.textContent = `Address: ${data.address.slice(0, 8)}...${data.address.slice(-8)}`;
+caEl.dataset.fullAddress = data.address;
+
     
     const verifiedBadge = document.getElementById('verifiedBadge');
     if (data.verified) {
@@ -365,25 +379,26 @@ function viewChart() {
 // ==========================================
 // HUGGING FACE AI ANALYSIS INTEGRATION
 // ==========================================
-// ==========================================
-// AI ANALYSIS (SECURE PROXY) — NO KEYS IN BROWSER
-// ==========================================
 
-// 1) Put your Cloudflare Worker URL here:
-const AI_API_BASE = "https://YOUR_WORKER_URL.workers.dev";
+// ==========================================
+// AI ANALYSIS (VERCEL /api PROXY) — NO KEYS IN BROWSER
+// ==========================================
+// Uses SAME-DOMAIN endpoints on Vercel:
+//   POST /api/sentiment
+//   POST /api/chart-vision
+//   POST /api/rugrisk
 
-// 2) Main AI Analysis Controller
 async function runAIAnalysis() {
     if (!currentTokenData) {
         showToast('Please analyze a token first');
         return;
     }
 
-    // (Optional) hide the key input UX since we don't use it anymore
+    // Clear the key input (we don't use it in browser anymore)
     const keyInput = document.getElementById('hfApiKey');
     if (keyInput) keyInput.value = '';
 
-    // Reset UI + show loading states
+    // Reset UI + show loading
     document.getElementById('sentimentPlaceholder').classList.add('hidden');
     document.getElementById('patternPlaceholder').classList.add('hidden');
     document.getElementById('rugPullPlaceholder').classList.add('hidden');
@@ -402,26 +417,20 @@ async function runAIAnalysis() {
         const tokenName = document.getElementById('tokenName').textContent.trim();
         const tokenSymbol = document.getElementById('tokenSymbol').textContent.trim();
 
-        // Build prompt text for sentiment
         const sentimentText = `${tokenName} ${tokenSymbol} crypto token price analysis`;
-
-        // Build rug risk summary (zero-shot works best with words)
         const summary = buildRiskSummary(tokenName, tokenSymbol);
 
-        // Chart vision (placeholder): send chart canvas as image
         const canvas = document.getElementById('volumeChart');
         const imageDataUrl = canvas ? canvas.toDataURL('image/png') : null;
 
-        // Run calls in parallel
         const [sentimentRes, patternRes, rugRes] = await Promise.allSettled([
-            postJSON(`${AI_API_BASE}/api/sentiment`, { text: sentimentText }),
-            imageDataUrl ? postJSON(`${AI_API_BASE}/api/chart-vision`, { imageDataUrl }) : Promise.resolve({ ok: false }),
-            postJSON(`${AI_API_BASE}/api/rugrisk`, { summary })
+            postJSON('/api/sentiment', { text: sentimentText }),
+            imageDataUrl ? postJSON('/api/chart-vision', { imageDataUrl }) : Promise.resolve({ ok: false }),
+            postJSON('/api/rugrisk', { summary })
         ]);
 
         // ----- Sentiment -----
-        if (sentimentRes.status === "fulfilled" && sentimentRes.value?.ok) {
-            // sentimentRes.value.preds => [{label:"positive|neutral|negative", score:0..1}]
+        if (sentimentRes.status === 'fulfilled' && sentimentRes.value?.ok) {
             const sentimentData = normalizeSentimentFromPreds(sentimentRes.value.preds, tokenName);
             displaySentimentResults(sentimentData);
             document.getElementById('sentimentResult').classList.remove('hidden');
@@ -429,25 +438,23 @@ async function runAIAnalysis() {
             document.getElementById('sentimentPlaceholder').classList.remove('hidden');
         }
 
-        // ----- Pattern (placeholder via DETR) -----
-        if (patternRes.status === "fulfilled" && patternRes.value?.ok) {
+        // ----- Pattern (vision placeholder) -----
+        if (patternRes.status === 'fulfilled' && patternRes.value?.ok) {
             const patternData = normalizePatternFromVision(patternRes.value.data);
             displayPatternResults(patternData);
             document.getElementById('patternResult').classList.remove('hidden');
         } else {
-            // fallback to your existing mock pattern so it always shows something
             const patternData = generateMockPatternData();
             displayPatternResults(patternData);
             document.getElementById('patternResult').classList.remove('hidden');
         }
 
-        // ----- Rug Pull Risk (zero-shot) -----
-        if (rugRes.status === "fulfilled" && rugRes.value?.ok) {
+        // ----- Rug risk -----
+        if (rugRes.status === 'fulfilled' && rugRes.value?.ok) {
             const riskData = normalizeRugRiskFromZeroShot(rugRes.value.data);
             displayRugPullResults(riskData);
             document.getElementById('rugPullResult').classList.remove('hidden');
         } else {
-            // fallback to mock
             const riskData = generateMockRugPullData();
             displayRugPullResults(riskData);
             document.getElementById('rugPullResult').classList.remove('hidden');
@@ -455,7 +462,6 @@ async function runAIAnalysis() {
 
         lucide.createIcons();
         showToast('AI Analysis Complete!');
-
     } catch (error) {
         console.error('AI Analysis error:', error);
         document.getElementById('aiAnalysisError').classList.remove('hidden');
@@ -474,20 +480,18 @@ async function postJSON(url, body) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
     });
-    // Worker always returns JSON
     return await r.json();
 }
 
-// ----- Sentiment helpers -----
+// ---------- Sentiment helpers ----------
 function normalizeSentimentFromPreds(preds, tokenName) {
-    // preds: [{label:"positive|neutral|negative", score:0..1}]
-    const pos = (preds.find(p => p.label === "positive")?.score || 0);
-    const neu = (preds.find(p => p.label === "neutral")?.score || 0);
-    const neg = (preds.find(p => p.label === "negative")?.score || 0);
+    const pos = (preds.find(p => p.label === 'positive')?.score || 0);
+    const neu = (preds.find(p => p.label === 'neutral')?.score || 0);
+    const neg = (preds.find(p => p.label === 'negative')?.score || 0);
 
     const positive = Math.round(pos * 100);
     const neutral = Math.round(neu * 100);
-    const negative = Math.max(0, 100 - positive - neutral); // keep sum 100-ish
+    const negative = Math.max(0, 100 - positive - neutral);
 
     const score = Math.max(0, Math.min(100, Math.round(((pos - neg) + 1) * 50)));
 
@@ -497,53 +501,112 @@ function normalizeSentimentFromPreds(preds, tokenName) {
         negative,
         score,
         summary: generateSentimentSummary(positive, tokenName),
-        mentions: generateMockMentions() // keep until you add real social data sources
+        mentions: generateMockMentions()
     };
 }
 
-// (Fix: tokenName now passed in explicitly)
 function generateSentimentSummary(positive, tokenName) {
-    if (positive > 70) {
-        return `Strong bullish sentiment detected for ${tokenName}. Community showing high confidence with increasing engagement rates.`;
-    } else if (positive > 40) {
-        return `Mixed sentiment with cautious optimism for ${tokenName}. Some FUD detected but overall community remains supportive.`;
-    } else {
-        return `Negative sentiment spike detected for ${tokenName}. Multiple red flags mentioned in recent discussions. Exercise caution.`;
-    }
+    if (positive > 70) return `Strong bullish sentiment detected for ${tokenName}.`;
+    if (positive > 40) return `Mixed sentiment with cautious optimism for ${tokenName}.`;
+    return `Negative sentiment spike detected for ${tokenName}. Exercise caution.`;
 }
 
-// ----- Pattern helpers (placeholder) -----
+function generateMockMentions() {
+    return [
+        { text: 'Just aped into this, looks primed for 10x 🚀', sentiment: 'positive' },
+        { text: 'Dev is active and liquidity is locked 🔒', sentiment: 'positive' },
+        { text: 'Volume looking suspicious, be careful guys', sentiment: 'negative' },
+        { text: 'Chart consolidating nicely here', sentiment: 'neutral' }
+    ];
+}
+
+// NOTE: You already had displaySentimentResults earlier in your older file.
+// If it’s missing now, paste this too:
+function displaySentimentResults(data) {
+    document.getElementById('sentimentResult').classList.remove('hidden');
+    document.getElementById('positiveSentiment').textContent = data.positive + '%';
+    document.getElementById('neutralSentiment').textContent = data.neutral + '%';
+    document.getElementById('negativeSentiment').textContent = data.negative + '%';
+    document.getElementById('sentimentScore').textContent = data.score + '/100';
+    document.getElementById('sentimentBar').style.width = data.score + '%';
+    document.getElementById('sentimentBar').className =
+        `h-2 rounded-full transition-all duration-1000 ${
+            data.score > 70 ? 'bg-green-500' : data.score > 40 ? 'bg-yellow-500' : 'bg-red-500'
+        }`;
+    document.getElementById('sentimentSummary').textContent = data.summary;
+
+    const mentionsHtml = data.mentions.map(m => `
+        <div class="flex items-start gap-2">
+            <span class="text-${m.sentiment === 'positive' ? 'green' : m.sentiment === 'negative' ? 'red' : 'gray'}-400 text-[10px] mt-0.5">●</span>
+            <p class="text-gray-400 truncate">${m.text}</p>
+        </div>
+    `).join('');
+    document.getElementById('sentimentMentions').innerHTML = mentionsHtml;
+}
+
+// ---------- Pattern helpers ----------
 function normalizePatternFromVision(visionOutput) {
-    // DETR output isn't real chart pattern recognition.
-    // Keep UI stable: map to a neutral pattern card.
     const topScore = Array.isArray(visionOutput) && visionOutput[0]?.score ? visionOutput[0].score : 0.25;
     const confidence = Math.round(topScore * 100);
 
     return {
         name: 'Experimental Vision Output',
-        description: 'Placeholder object-detection model. For real chart patterns, switch to OHLCV-based detection or a chart-trained model.',
+        description: 'Placeholder object-detection model (not true chart pattern recognition).',
         confidence: Math.min(95, Math.max(35, confidence)),
         trend: 'Unknown',
         support: (Math.random() * 0.0001).toFixed(8),
         resistance: (Math.random() * 0.0005 + 0.0001).toFixed(8),
-        prediction: 'Use this as a pipeline demo. Next upgrade: detect patterns from OHLCV with rules or a chart-specific ML model.'
+        prediction: 'For real patterns, switch to OHLCV-based detection or a chart-trained model.'
     };
 }
 
-// ----- Rug risk helpers (zero-shot) -----
+// NOTE: If your file no longer contains these, you need them:
+function generateMockPatternData() {
+    const patterns = ['Ascending Triangle', 'Bull Flag', 'Double Bottom', 'Head and Shoulders', 'Falling Wedge', 'Cup and Handle'];
+    const selectedPattern = patterns[Math.floor(Math.random() * patterns.length)];
+    const confidence = Math.floor(Math.random() * 40) + 60;
+    const isBullish = ['Ascending Triangle', 'Bull Flag', 'Double Bottom', 'Falling Wedge', 'Cup and Handle'].includes(selectedPattern);
+    return {
+        name: selectedPattern,
+        description: 'Mock pattern for demo.',
+        confidence,
+        trend: isBullish ? 'Bullish' : 'Bearish',
+        support: (Math.random() * 0.0001).toFixed(8),
+        resistance: (Math.random() * 0.0005 + 0.0001).toFixed(8),
+        prediction: 'Mock prediction for demo.'
+    };
+}
+
+function displayPatternResults(data) {
+    document.getElementById('patternResult').classList.remove('hidden');
+    document.getElementById('patternName').textContent = data.name;
+    document.getElementById('patternDescription').textContent = data.description;
+    document.getElementById('patternConfidence').textContent = data.confidence + '%';
+    document.getElementById('patternTrend').textContent = data.trend;
+    document.getElementById('patternTrend').className =
+        `text-xs px-2 py-1 rounded ${
+            data.trend === 'Bullish' ? 'bg-green-900/50 text-green-400' :
+            data.trend === 'Bearish' ? 'bg-red-900/50 text-red-400' :
+            'bg-gray-800 text-gray-300'
+        }`;
+    document.getElementById('supportLevel').textContent = 'S: $' + data.support;
+    document.getElementById('resistanceLevel').textContent = 'R: $' + data.resistance;
+    document.getElementById('patternPrediction').textContent = data.prediction;
+}
+
+// ---------- Rug risk helpers ----------
 function buildRiskSummary(tokenName, tokenSymbol) {
-    // Use on-page computed metrics
     const liqLocked = currentTokenData?.liquidity?.lockedPercent ?? 0;
     const devPct = currentTokenData?.holders?.devPercent ?? 0;
     const top10Pct = currentTokenData?.holders?.top10Percent ?? 0;
-    const mcapLiq = currentTokenData?.liquidity?.mcapRatio ?? "0";
+    const mcapLiq = currentTokenData?.liquidity?.mcapRatio ?? '0';
     const vol24 = currentTokenData?.volume?.h24 ?? 0;
-    const growth = currentTokenData?.holders?.growth24h ?? "0";
-    const wash = currentTokenData?.volume?.washTrading ?? "Unknown";
+    const growth = currentTokenData?.holders?.growth24h ?? '0';
+    const wash = currentTokenData?.volume?.washTrading ?? 'Unknown';
 
-    const mintRisk = currentTokenData?.risks?.find(r => r.name === 'Mint Authority')?.risk ? "active" : "revoked";
-    const freezeRisk = currentTokenData?.risks?.find(r => r.name === 'Freeze Authority')?.risk ? "active" : "revoked";
-    const lpRisk = currentTokenData?.risks?.find(r => r.name === 'LP Tokens')?.risk ? "unlocked" : "burned/locked";
+    const mintRisk = currentTokenData?.risks?.find(r => r.name === 'Mint Authority')?.risk ? 'active' : 'revoked';
+    const freezeRisk = currentTokenData?.risks?.find(r => r.name === 'Freeze Authority')?.risk ? 'active' : 'revoked';
+    const lpRisk = currentTokenData?.risks?.find(r => r.name === 'LP Tokens')?.risk ? 'unlocked' : 'burned/locked';
 
     return `
 Token: ${tokenName} (${tokenSymbol})
@@ -565,13 +628,72 @@ Return label probabilities.
 }
 
 function normalizeRugRiskFromZeroShot(zeroShot) {
-    // zeroShot: {labels:[...], scores:[...], sequence:"..."}
     const labels = zeroShot?.labels || [];
     const scores = zeroShot?.scores || [];
-
     const rugIdx = labels.findIndex(l => String(l).toLowerCase().includes('rug'));
     const rugProb = rugIdx >= 0 ? scores[rugIdx] : 0.25;
     const score = Math.round(rugProb * 100);
-
     return generateRugPullDataFromScore(score);
+}
+
+function generateMockRugPullData() {
+    return generateRugPullDataFromScore(Math.floor(Math.random() * 100));
+}
+
+function generateRugPullDataFromScore(score) {
+    const riskLevel = score < 30 ? 'Low' : score < 70 ? 'Medium' : 'High';
+    const indicators = [
+        { name: 'Liquidity Lock', status: score < 40 ? 'Safe ✅' : score < 70 ? 'Partial ⚠️' : 'None ❌', risk: score > 60 },
+        { name: 'Dev Wallet', status: score < 30 ? 'Low % ✅' : score < 60 ? 'Medium ⚠️' : 'High % ❌', risk: score > 50 },
+        { name: 'Holder Concentration', status: score < 35 ? 'Healthy ✅' : score < 70 ? 'Moderate ⚠️' : 'Extreme ❌', risk: score > 70 },
+        { name: 'Volume Pattern', status: score > 80 ? 'Artificial ❌' : score > 55 ? 'Suspicious ⚠️' : 'Organic ✅', risk: score > 55 }
+    ];
+    const flags = riskLevel === 'High'
+        ? ['LP unlock risk', 'High dev concentration', 'Rug-like behavior']
+        : riskLevel === 'Medium'
+        ? ['Monitor LP', 'Watch dev wallet', 'Use tight stops']
+        : ['Lower risk signals', 'No major flags detected'];
+
+    return { score, riskLevel, indicators, flags };
+}
+
+function displayRugPullResults(data) {
+    document.getElementById('rugPullResult').classList.remove('hidden');
+
+    const scoreEl = document.getElementById('rugPullScore');
+    scoreEl.textContent = data.score;
+
+    // Color score
+    scoreEl.className =
+        data.riskLevel === 'High' ? 'text-4xl font-bold mb-1 text-red-400' :
+        data.riskLevel === 'Medium' ? 'text-4xl font-bold mb-1 text-yellow-400' :
+        'text-4xl font-bold mb-1 text-green-400';
+
+    // Indicators
+    document.getElementById('rugPullIndicators').innerHTML = data.indicators.map(ind => `
+        <div class="flex items-center justify-between bg-gray-900/40 border border-gray-700 rounded-lg px-3 py-2">
+            <span class="text-xs text-gray-400">${ind.name}</span>
+            <span class="text-xs font-medium ${ind.risk ? 'text-red-400' : 'text-green-400'}">${ind.status}</span>
+        </div>
+    `).join('');
+
+    // Flags
+    document.getElementById('mlFlags').innerHTML = (data.flags || []).map(f => `
+        <span class="px-2 py-1 bg-gray-800 border border-gray-700 text-gray-300 rounded text-[11px]">${f}</span>
+    `).join('');
+
+    // Verdict
+    const verdictEl = document.getElementById('rugPullVerdict');
+    const box = document.getElementById('rugPullVerdictBox');
+
+    if (data.riskLevel === 'High') {
+        verdictEl.textContent = 'HIGH RISK: Multiple rug-style signals detected.';
+        box.className = 'mt-4 p-3 rounded-lg border bg-red-900/20 border-red-500/30';
+    } else if (data.riskLevel === 'Medium') {
+        verdictEl.textContent = 'MEDIUM RISK: Mixed signals — trade smaller and use tight stops.';
+        box.className = 'mt-4 p-3 rounded-lg border bg-yellow-900/20 border-yellow-500/30';
+    } else {
+        verdictEl.textContent = 'LOWER RISK: Fewer rug-like signals detected (still DYOR).';
+        box.className = 'mt-4 p-3 rounded-lg border bg-green-900/20 border-green-500/30';
+    }
 }
