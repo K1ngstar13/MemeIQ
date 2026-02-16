@@ -424,10 +424,11 @@ async function runAIAnalysis() {
         const imageDataUrl = canvas ? canvas.toDataURL('image/png') : null;
 
         const [sentimentRes, patternRes, rugRes] = await Promise.allSettled([
-            postJSON('/api/sentiment', { text: sentimentText }),
-            imageDataUrl ? postJSON('/api/chart-vision', { imageDataUrl }) : Promise.resolve({ ok: false }),
-            postJSON('/api/rugrisk', { summary })
-        ]);
+  postJSON('/api/sentiment', { text: sentimentText }),
+  imageDataUrl ? postJSON('/api/chart-vision', { imageDataUrl }) : Promise.resolve({ ok: false }),
+  postJSON('/api/rugrisk', { summary })
+]);
+
 
         // ----- Sentiment -----
         if (sentimentRes.status === 'fulfilled' && sentimentRes.value?.ok) {
