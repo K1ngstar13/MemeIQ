@@ -1,4 +1,4 @@
-// Enhanced Meme Coin Analysis API - With Sentiment & Dev Tracking
+// Enhanced Meme Coin Analysis API - Compatible with your frontend
 // Uses: Birdeye (primary), HuggingFace (sentiment), Helius (dev tracking)
 
 export default async function handler(req, res) {
@@ -74,7 +74,7 @@ export default async function handler(req, res) {
     // ==================== PARSE CORE TOKEN DATA ====================
     const name   = ov.name || market?.data?.name || 'Unknown';
     const symbol = ov.symbol || market?.data?.symbol || '—';
-    const image  = ov.logoURI || ov.logo || market?.data?.logoURI || '';
+    const logo   = ov.logoURI || ov.logo || market?.data?.logoURI || '';
     const price  = Number(ov.price || market?.data?.price || 0);
     const mcap   = Number(ov.mc || ov.marketCap || market?.data?.marketCap || 0);
     const fdv    = Number(ov.fdv || market?.data?.fdv || 0);
@@ -122,8 +122,6 @@ export default async function handler(req, res) {
 
     if (hfKey && symbol && symbol !== '—') {
       try {
-        // Free tier: Use Twitter/Telegram scraping + HuggingFace Inference API
-        // For demo: we'll simulate fetching social posts (you'll need to implement actual scraping)
         const socialPosts = await fetchSocialPosts(symbol);
         
         if (socialPosts.length > 0) {
@@ -172,7 +170,6 @@ export default async function handler(req, res) {
         if (devTxRes.ok) {
           const devTxData = await devTxRes.json();
           
-          // Filter for sells of this specific token in last 7 days
           const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
           const recentSells = [];
           let totalSellVol = 0;
@@ -182,7 +179,6 @@ export default async function handler(req, res) {
               const txTime = tx.timestamp ? tx.timestamp * 1000 : 0;
               if (txTime < sevenDaysAgo) continue;
 
-              // Check if this tx involves selling our token
               const tokenTransfers = tx.tokenTransfers || [];
               for (const transfer of tokenTransfers) {
                 if (
@@ -223,14 +219,12 @@ export default async function handler(req, res) {
 
     // ==================== SCORING LOGIC (ENHANCED) ====================
     
-    // Liquidity score (0-100)
     const liquidityScore =
       liqTotal <= 0 ? 10 :
       lpLockedPct >= 90 ? 90 :
       lpLockedPct >= 60 ? 70 :
       lpLockedPct >= 30 ? 50 : 35;
 
-    // Wash trading detection
     const washTrading =
       v24 > 0 && liqTotal > 0 && (v24 / liqTotal) > 25 ? 'High' :
       v24 > 0 && liqTotal > 0 && (v24 / liqTotal) > 10 ? 'Medium' : 'Low';
@@ -239,7 +233,6 @@ export default async function handler(req, res) {
       washTrading === 'Low' ? 85 :
       washTrading === 'Medium' ? 65 : 45;
 
-    // Holder concentration
     const concentration =
       top10Pct >= 80 ? 'Extreme' :
       top10Pct >= 45 ? 'Moderate' : 'Healthy';
@@ -248,10 +241,8 @@ export default async function handler(req, res) {
       concentration === 'Healthy' ? 85 :
       concentration === 'Moderate' ? 60 : 35;
 
-    // NEW: Sentiment score (weighted)
     const sentimentScore = sentimentData.available ? sentimentData.score : 50;
 
-    // NEW: Dev activity penalty
     let devActivityPenalty = 0;
     if (devActivity.available && devActivity.suspiciousActivity) {
       devActivityPenalty = 20;
@@ -259,7 +250,6 @@ export default async function handler(req, res) {
       devActivityPenalty = 10;
     }
 
-    // Overall risk score (0-100, higher = safer)
     const overall = Math.max(0, Math.round(
       (liquidityScore * 0.3 + volumeScore * 0.25 + holderScore * 0.25 + sentimentScore * 0.2) - devActivityPenalty
     ));
@@ -277,42 +267,41 @@ export default async function handler(req, res) {
 
     if (Array.isArray(candles) && candles.length) {
       priceHistory = candles.slice(-7).map((c, idx) => ({
-        day: `Day ${idx + 1}`,
+        label: `Day ${idx + 1}`,
         price: Number(c.close || c.c || c.price || price || 0),
         volume: Number(c.volume || c.v || c.volumeUSD || v24 / 7 || 0)
       }));
     } else {
       priceHistory = Array.from({ length: 7 }, (_, i) => ({
-        day: `Day ${i + 1}`,
+        label: `Day ${i + 1}`,
         price: price || 0,
         volume: v24 ? v24 / 7 : 0
       }));
     }
 
     // ==================== SECURITY FLAGS (ENHANCED) ====================
-    const flags = [];
+    const risks = [];
     
-    flags.push({
+    risks.push({
       name: 'Mint Authority',
       status: mintAuth ? 'Active 🔴' : 'Revoked 🟢',
       risk: !!mintAuth
     });
     
-    flags.push({
+    risks.push({
       name: 'Freeze Authority',
       status: freezeAuth ? 'Active 🔴' : 'Revoked 🟢',
       risk: !!freezeAuth
     });
     
-    flags.push({
+    risks.push({
       name: 'LP Lock %',
       status: lpLockedPct ? `${Math.round(lpLockedPct)}% 🔒` : 'Unknown ⚠️',
       risk: lpLockedPct > 0 ? lpLockedPct < 50 : true
     });
 
-    // NEW: Dev activity flag
     if (devActivity.available) {
-      flags.push({
+      risks.push({
         name: 'Dev Activity (7d)',
         status: devActivity.recentSells > 0 
           ? `${devActivity.recentSells} sell(s) 🔴` 
@@ -321,75 +310,92 @@ export default async function handler(req, res) {
       });
     }
 
-    // NEW: Sentiment flag
     if (sentimentData.available) {
       const sentimentEmoji = 
         sentimentData.score >= 65 ? '🟢' :
         sentimentData.score >= 45 ? '🟡' : '🔴';
       
-      flags.push({
+      risks.push({
         name: 'Social Sentiment',
         status: `${sentimentData.bullish}% bullish ${sentimentEmoji}`,
         risk: sentimentData.score < 45
       });
     }
     
-    flags.push({
+    risks.push({
       name: 'Data Source',
       status: 'Birdeye ✅',
       risk: false
     });
 
-    // ==================== FINAL RESPONSE ====================
-    const data = {
+    // Calculate recommendation
+    const recommendation = 
+      overall >= 80 ? 'BUY' :
+      overall >= 60 ? 'CAUTION' : 'AVOID';
+
+    // Entry/exit prices (simple logic)
+    const entryPrice = price * 0.95; // 5% below current
+    const exitPrice = price * 1.15;  // 15% above current
+
+    // ==================== FRONTEND-COMPATIBLE RESPONSE ====================
+    const token = {
+      // Basic info
       address,
       name,
       symbol,
-      image,
+      logo,
       verified: Boolean(ov.isVerified || ov.verified || false),
 
+      // Price data
       price,
       priceChange24h: ch24,
       marketCap: mcap,
       fdv,
 
-      liquidity: {
-        total: liqTotal,
-        lockedPercent: lpLockedPct || 0,
-        mcapRatio: Number.isFinite(mcapLiqRatio) ? mcapLiqRatio.toFixed(2) : '0.00',
-        score: liquidityScore
+      // Liquidity
+      liquidityUSD: liqTotal,
+      lpLockedPct: lpLockedPct || 0,
+      mcapLiqRatio: Number.isFinite(mcapLiqRatio) ? mcapLiqRatio.toFixed(2) : '0.00',
+
+      // Volume
+      volume24hUSD: v24,
+      buySellRatio: null,
+      washRiskLabel: washTrading,
+
+      // Holders
+      holders: totalHolders,
+      top10Pct: top10Pct || 0,
+      concentrationLabel: concentration,
+
+      // Scores
+      scores: {
+        liquidity: liquidityScore,
+        volume: volumeScore,
+        holders: holderScore,
+        overall: overall
       },
 
-      volume: {
-        h24: v24,
-        buySellRatio: null,
-        washTrading,
-        score: volumeScore
+      // Chart data
+      chart: {
+        points: priceHistory
       },
 
-      holders: {
-        total: totalHolders,
-        growth24h: 0,
-        newBuyers24h: 0,
-        top10Percent: top10Pct || 0,
-        devPercent: devPct || 0,
-        concentration,
-        score: holderScore
-      },
+      // Analysis results
+      recommendation,
+      entryPrice,
+      exitPrice,
+      summary,
+      risks,
 
-      // NEW: Sentiment data
+      // NEW: Sentiment & Dev Activity
       sentiment: sentimentData,
-
-      // NEW: Dev activity tracking
       devActivity: devActivity,
 
-      risks: flags,
-      overallScore: overall,
-      summary,
-      priceHistory
+      // For AI analysis (if you use it)
+      summaryForAI: `${name} (${symbol}): Overall score ${overall}/100. Liquidity: ${liquidityScore}/100 (${lpLockedPct}% locked). Volume: ${volumeScore}/100 (wash risk: ${washTrading}). Holders: ${holderScore}/100 (${concentration} concentration, top 10 hold ${top10Pct}%). ${devActivity.suspiciousActivity ? 'Dev has been selling recently.' : 'No recent dev sells.'} ${sentimentData.available ? `Social sentiment: ${sentimentData.bullish}% bullish.` : ''}`
     };
 
-    return res.status(200).json({ ok: true, data });
+    return res.status(200).json({ ok: true, token });
     
   } catch (e) {
     console.error('Analysis error:', e);
@@ -399,17 +405,8 @@ export default async function handler(req, res) {
 
 // ==================== HELPER FUNCTIONS ====================
 
-/**
- * Fetch recent social media posts mentioning the token symbol
- * FREE implementation using publicly available sources
- */
 async function fetchSocialPosts(symbol) {
   try {
-    // Strategy 1: Use Twitter's public search (no API key needed for basic scraping)
-    // Note: For production, you'd use Twitter API v2 (free tier: 500k tweets/month)
-    // Or use a service like Nitter (Twitter proxy) or Reddit API
-    
-    // For now, we'll use a free Reddit API approach (no key needed for public data)
     const redditUrl = `https://www.reddit.com/r/CryptoMoonShots/search.json?q=${encodeURIComponent(symbol)}&sort=new&limit=10`;
     
     const response = await fetch(redditUrl, {
@@ -426,14 +423,13 @@ async function fetchSocialPosts(symbol) {
     if (data?.data?.children) {
       for (const child of data.data.children) {
         const post = child.data;
-        const text = `${post.title} ${post.selftext || ''}`.slice(0, 128); // Limit to 128 chars
+        const text = `${post.title} ${post.selftext || ''}`.slice(0, 128);
         if (text.trim().length > 10) {
           posts.push(text.trim());
         }
       }
     }
 
-    // Fallback: If Reddit fails, return sample data (you can remove this in production)
     if (posts.length === 0) {
       return [
         `${symbol} is looking bullish, great momentum!`,
@@ -450,18 +446,12 @@ async function fetchSocialPosts(symbol) {
   }
 }
 
-/**
- * Analyze sentiment using HuggingFace Inference API (FREE tier)
- * Free tier: 1000 requests/month, then $0.0001/request
- */
 async function analyzeSentimentBatch(posts, apiKey) {
   try {
     const results = [];
-
-    // HuggingFace free inference API
     const model = 'ElKulako/cryptobert';
     
-    for (const post of posts.slice(0, 10)) { // Limit to 10 to stay within free tier
+    for (const post of posts.slice(0, 10)) {
       const response = await fetch(
         `https://api-inference.huggingface.co/models/${model}`,
         {
@@ -477,14 +467,12 @@ async function analyzeSentimentBatch(posts, apiKey) {
       if (response.ok) {
         const result = await response.json();
         
-        // Response format: [{ label: 'Bullish', score: 0.87 }, ...]
         if (Array.isArray(result) && result[0]) {
           const topLabel = result[0][0]?.label || result[0].label || 'Neutral';
           results.push({ label: topLabel, post });
         }
       }
 
-      // Rate limiting: wait 100ms between requests (free tier safe)
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
