@@ -6,18 +6,14 @@ export default async function handler(req, res) {
     const KEY = process.env.BIRDEYE_API_KEY;
     if (!KEY) return res.status(500).json({ ok: false, error: "Missing BIRDEYE_API_KEY env var" });
 
+    const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
+    if (!ANTHROPIC_KEY) return res.status(500).json({ ok: false, error: "Missing ANTHROPIC_API_KEY env var" });
+
     const headers = {
       "X-API-KEY": KEY,
       "accept": "application/json",
     };
 
-    // Birdeye endpoints used:
-    // - Token overview: /defi/token_overview
-    // - Price/Volume: /defi/price_volume/single
-    // - Security: /defi/v3/token/security
-    // - Holder list: /defi/v3/token/holder
-    // - Exit liquidity: /defi/v3/token/exit-liquidity
-    // - Price history: /defi/history_price
     const [
       overview,
       pv,
@@ -38,7 +34,6 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: false, error: "Token not found (overview failed)", raw: overview });
     }
 
-    // Normalize safest fields (Birdeye sometimes returns {success,data} or {data})
     const ov = overview?.data || overview;
     const pvData = pv?.data || pv;
     const sec = security?.data || security;
@@ -49,17 +44,13 @@ export default async function handler(req, res) {
     // Key metrics
     const price = number(pvData?.price ?? ov?.price);
     const priceChange24h = number(pvData?.priceChangePercent24h ?? ov?.priceChangePercent24h ?? pvData?.priceChange24h);
-
     const marketCap = number(ov?.mc ?? ov?.marketCap ?? pvData?.marketCap);
     const fdv = number(ov?.fdv ?? pvData?.fdv ?? ov?.fullyDilutedValuation);
-
     const volume24hUSD = number(pvData?.volume24h ?? pvData?.volume24hUSD ?? ov?.v24hUSD ?? ov?.volume24hUSD);
     const buyVol = number(pvData?.buyVolume24h);
     const sellVol = number(pvData?.sellVolume24h);
     const buySellRatio = (buyVol > 0 && sellVol > 0) ? (buyVol / sellVol) : null;
-
-    const liquidityUSD =
-      number(l?.liquidity ?? l?.totalLiquidity ?? ov?.liquidity ?? ov?.liquidityUSD);
+    const liquidityUSD = number(l?.liquidity ?? l?.totalLiquidity ?? ov?.liquidity ?? ov?.liquidityUSD);
 
     // Token metadata
     const name = ov?.name || ov?.tokenName || "Unknown";
@@ -68,8 +59,6 @@ export default async function handler(req, res) {
 
     // Holders
     const holdersCount = number(ov?.holder ?? ov?.holders ?? sec?.holderCount);
-
-    // Top10 concentration (approx): sum top 10 holder amounts / supply
     const supply = number(ov?.supply ?? ov?.totalSupply);
     const topHolders = Array.isArray(h?.items) ? h.items : (Array.isArray(h) ? h : []);
     const top10Amount = topHolders.slice(0, 10).reduce((acc, it) => acc + number(it?.amount ?? it?.uiAmount ?? it?.balance), 0);
@@ -80,7 +69,7 @@ export default async function handler(req, res) {
     const freezeAuth = truthy(sec?.freezeAuthority) || truthy(sec?.freeze_authority);
     const lpLockedPct = number(sec?.lpLockedPercent ?? sec?.lp_locked_percent ?? sec?.lp_locked);
 
-    // Score heuristics (simple + transparent)
+    // Score heuristics
     const mcapLiqRatio = (marketCap > 0 && liquidityUSD > 0) ? marketCap / liquidityUSD : null;
 
     const concentrationLabel =
@@ -113,7 +102,7 @@ export default async function handler(req, res) {
       scoreFrom([
         [holdersCount, v => v >= 20000 ? 40 : v >= 5000 ? 30 : v >= 1000 ? 20 : 10],
         [top10Pct, v => v <= 30 ? 35 : v <= 55 ? 20 : 8],
-        [mintAuth, v => v ? 5 : 25],       // mint auth active is bad
+        [mintAuth, v => v ? 5 : 25],
       ])
     );
 
@@ -133,15 +122,50 @@ export default async function handler(req, res) {
       { name: "Top 10 Holders", status: top10Pct == null ? "--" : `${top10Pct.toFixed(1)}%`, risk: top10Pct != null ? top10Pct > 55 : false },
     ];
 
-    const summary =
-      recommendation === "BUY"
-        ? `Healthy liquidity + volume, and acceptable concentration. Consider entry near ${price ? `$${price}` : "current price"} with disciplined risk management.`
-        : recommendation === "CAUTION"
-          ? `Mixed signals: monitor LP lock, holder concentration, and volume/liquidity ratio. Size smaller and use stops.`
-          : `Multiple red flags: high concentration and/or risky authorities/LP. Avoid unless you fully understand the risks.`;
-
-    // Chart points from history_price (best-effort; fallback to empty)
     const points = normalizeHistoryPoints(hist);
+
+    // Build a rich, token-specific AI prompt
+    const aiPrompt = `You are a Solana memecoin analyst. Analyze this SPECIFIC token and give a unique, data-driven assessment. 
+Do NOT give generic advice. Base everything on the exact numbers below.
+
+Token: ${name} (${symbol})
+Contract: ${address}
+Price: $${isFinite(price) ? price.toFixed(8) : "unknown"}
+24h Price Change: ${isFinite(priceChange24h) ? priceChange24h.toFixed(2) + "%" : "unknown"}
+Market Cap: $${isFinite(marketCap) ? marketCap.toLocaleString() : "unknown"}
+FDV: $${isFinite(fdv) ? fdv.toLocaleString() : "unknown"}
+24h Volume: $${isFinite(volume24hUSD) ? volume24hUSD.toLocaleString() : "unknown"}
+Liquidity USD: $${isFinite(liquidityUSD) ? liquidityUSD.toLocaleString() : "unknown"}
+Buy/Sell Ratio: ${buySellRatio != null ? buySellRatio.toFixed(2) : "unknown"}
+LP Locked %: ${isFinite(lpLockedPct) ? lpLockedPct.toFixed(1) + "%" : "unknown"}
+Top 10 Holders %: ${top10Pct != null ? top10Pct.toFixed(1) + "%" : "unknown"}
+Holder Concentration: ${concentrationLabel}
+Mint Authority Active: ${mintAuth}
+Freeze Authority Active: ${freezeAuth}
+Wash Trading Risk: ${washRiskLabel}
+Liquidity Score: ${liquidityScore}/100
+Volume Score: ${volumeScore}/100
+Holders Score: ${holdersScore}/100
+Overall Score: ${overall}/100
+Recommendation: ${recommendation}
+
+Write 3-4 sentences of specific analysis for THIS token using the actual data above. 
+Mention specific numbers. Explain WHY it gets a ${recommendation} rating based on its actual metrics.
+Point out the most notable red flags or green flags specific to this token.
+Be direct and specific. Do not use generic memecoin disclaimers.`;
+
+    // Get real AI summary
+    const aiSummary = await getAISummary(aiPrompt, ANTHROPIC_KEY);
+
+    // Fallback if AI fails
+    const fallbackSummary =
+      recommendation === "BUY"
+        ? `${name} shows strong fundamentals with a liquidity score of ${liquidityScore}/100 and volume score of ${volumeScore}/100. Top 10 holders control ${top10Pct != null ? top10Pct.toFixed(1) + "%" : "an unknown %"} of supply (${concentrationLabel}). Wash trading risk is ${washRiskLabel}. Consider entry near $${isFinite(price) ? price.toFixed(8) : "current price"} with disciplined risk management.`
+        : recommendation === "CAUTION"
+          ? `${name} has mixed signals — overall score ${overall}/100. Liquidity: ${liquidityScore}/100, Volume: ${volumeScore}/100, Holders: ${holdersScore}/100. ${mintAuth ? "Mint authority is still active (red flag). " : ""}Top 10 holders control ${top10Pct != null ? top10Pct.toFixed(1) + "%" : "an unknown %"} (${concentrationLabel}). Size smaller and use stops.`
+          : `${name} has multiple red flags — overall score only ${overall}/100. ${mintAuth ? "Mint authority active. " : ""}${freezeAuth ? "Freeze authority active. " : ""}Top 10 holders: ${top10Pct != null ? top10Pct.toFixed(1) + "%" : "unknown"} (${concentrationLabel}). Wash risk: ${washRiskLabel}. Avoid unless you fully understand the risks.`;
+
+    const summary = aiSummary || fallbackSummary;
 
     const token = {
       address,
@@ -167,19 +191,6 @@ export default async function handler(req, res) {
       entryPrice,
       exitPrice,
       summary,
-      summaryForAI: `Token: ${name} (${symbol})
-Price: ${price}
-24h change: ${priceChange24h}%
-Market cap: ${marketCap}
-FDV: ${fdv}
-Liquidity USD: ${liquidityUSD}
-LP locked %: ${lpLockedPct}
-Top10 holders %: ${top10Pct}
-Mint authority active: ${mintAuth}
-Freeze authority active: ${freezeAuth}
-Volume 24h USD: ${volume24hUSD}
-Wash risk: ${washRiskLabel}
-Classify this token as: rug pull / legitimate / high risk / safe. Return label probabilities.`,
       risks,
       chart: { points }
     };
@@ -191,6 +202,7 @@ Classify this token as: rug pull / legitimate / high risk / safe. Return label p
   }
 }
 
+// Fetch from Birdeye
 async function bird(url, headers) {
   const r = await fetch(url, { headers });
   const text = await r.text();
@@ -198,6 +210,30 @@ async function bird(url, headers) {
     return JSON.parse(text);
   } catch {
     return { success: false, error: "Non-JSON", raw: text.slice(0, 300) };
+  }
+}
+
+// Get real AI analysis from Anthropic
+async function getAISummary(prompt, apiKey) {
+  try {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 300,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+    const data = await r.json();
+    return data?.content?.[0]?.text || null;
+  } catch (e) {
+    console.error("Anthropic API error:", e);
+    return null;
   }
 }
 
@@ -229,12 +265,7 @@ function scoreFrom(pairs) {
   return total;
 }
 
-// Birdeye history_price is not always consistent across tokens.
-// We do best-effort parsing and return up to 7 points.
 function normalizeHistoryPoints(hist) {
-  // Common shapes:
-  // { data: { items: [{ unixTime, value }, ...] } }
-  // { data: [{ unixTime, value }, ...] }
   const items =
     Array.isArray(hist?.items) ? hist.items :
     Array.isArray(hist?.data?.items) ? hist.data.items :
@@ -254,6 +285,5 @@ function normalizeHistoryPoints(hist) {
     })
     .filter(Boolean);
 
-  // keep last 7
   return mapped.slice(-7);
 }
