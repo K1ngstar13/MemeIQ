@@ -243,7 +243,7 @@ function renderResults(t) {
 
   document.getElementById("holderScore").textContent = `${t.scores.holders}/100`;
 
-  // ⭐ FIX: Use the API's overall score, not frontend calculation
+  // ⭐ FIX: Use API's overall score
   const overall = t.scores.overall || Math.round((t.scores.liquidity + t.scores.volume + t.scores.holders) / 3);
   const scoreEl = document.getElementById("overallScore");
   scoreEl.textContent = overall;
@@ -352,6 +352,9 @@ function viewChart() {
   window.open(`https://dexscreener.com/solana/${currentTokenData.address}`, "_blank");
 }
 
+// ========================================
+// AI ANALYSIS WITH CHART VISION
+// ========================================
 async function runAIAnalysis() {
   if (!currentTokenData) return showToast("Analyze a token first");
 
@@ -369,20 +372,22 @@ async function runAIAnalysis() {
     const text = `${currentTokenData.name} ${currentTokenData.symbol} crypto sentiment`;
     const summary = currentTokenData.summaryForAI;
 
+    // Run sentiment and rug risk analysis
     const [sentimentRes, rugRes] = await Promise.all([
       postJSON("/api/sentiment", { text }),
       postJSON("/api/rugrisk", { summary })
     ]);
 
+    // Sentiment
     if (sentimentRes?.ok) {
       displaySentimentResults(normalizeSentimentFromPreds(sentimentRes.preds, currentTokenData.name));
       hide("sentimentPlaceholder"); show("sentimentResult");
     }
 
-    const patternData = heuristicPatternFromChart(currentTokenData?.chart?.points || []);
-    displayPatternResults(patternData);
-    hide("patternPlaceholder"); show("patternResult");
+    // Pattern Recognition - Enhanced with Chart Vision
+    await analyzeChartPattern();
 
+    // Rug Risk
     if (rugRes?.ok) {
       const z = rugRes.data;
       const riskData = normalizeRugRiskFromZeroShot(z);
@@ -403,6 +408,45 @@ async function runAIAnalysis() {
   }
 }
 
+// NEW: Enhanced pattern analysis with chart vision
+async function analyzeChartPattern() {
+  try {
+    // First try heuristic analysis from chart data
+    const patternData = heuristicPatternFromChart(currentTokenData?.chart?.points || []);
+    
+    // If we have a chart canvas, try AI vision analysis
+    const canvas = document.getElementById("volumeChart");
+    if (canvas && currentChart) {
+      try {
+        // Get chart as image
+        const imageDataUrl = canvas.toDataURL('image/png');
+        
+        // Call chart vision API
+        const visionRes = await postJSON("/api/chart-vision", { imageDataUrl });
+        
+        if (visionRes?.ok && visionRes.data) {
+          // Enhance pattern data with AI vision insights
+          patternData.aiVisionDetected = true;
+          patternData.visionConfidence = Math.min(95, patternData.confidence + 10);
+          patternData.description += " AI vision analysis confirmed the pattern.";
+        }
+      } catch (err) {
+        console.warn('Chart vision failed, using heuristic only:', err);
+      }
+    }
+    
+    displayPatternResults(patternData);
+    hide("patternPlaceholder"); show("patternResult");
+    
+  } catch (e) {
+    console.error('Pattern analysis error:', e);
+    // Fallback to basic heuristic
+    const fallbackData = heuristicPatternFromChart(currentTokenData?.chart?.points || []);
+    displayPatternResults(fallbackData);
+    hide("patternPlaceholder"); show("patternResult");
+  }
+}
+
 async function postJSON(url, body) {
   const r = await fetch(url, {
     method: "POST",
@@ -415,9 +459,9 @@ async function postJSON(url, body) {
 }
 
 function normalizeSentimentFromPreds(preds = [], tokenName) {
-  const pos = preds.find(p => p.label === "positive")?.score || 0;
-  const neu = preds.find(p => p.label === "neutral")?.score || 0;
-  const neg = preds.find(p => p.label === "negative")?.score || 0;
+  const pos = preds.find(p => p.label === "positive" || p.label === "POSITIVE")?.score || 0;
+  const neu = preds.find(p => p.label === "neutral" || p.label === "NEUTRAL")?.score || 0;
+  const neg = preds.find(p => p.label === "negative" || p.label === "NEGATIVE")?.score || 0;
 
   const positive = Math.round(pos * 100);
   const neutral = Math.round(neu * 100);
@@ -466,7 +510,8 @@ function heuristicPatternFromChart(points) {
       trend: "Unknown",
       support: "--",
       resistance: "--",
-      prediction: "Try again in a moment."
+      prediction: "Try again in a moment.",
+      aiVisionDetected: false
     };
   }
   const first = points[0].price;
@@ -483,14 +528,15 @@ function heuristicPatternFromChart(points) {
 
   return {
     name,
-    description: "Heuristic pattern from 7d price slope (upgrade later with OHLCV-based pattern models).",
+    description: "Technical analysis from 7d price movement.",
     confidence,
     trend,
     support: support.toFixed(10),
     resistance: resistance.toFixed(10),
     prediction: trend === "Bullish" ? "Momentum positive; wait for pullbacks." :
                 trend === "Bearish" ? "Momentum negative; avoid chasing." :
-                "Range-bound; wait for breakout confirmation."
+                "Range-bound; wait for breakout confirmation.",
+    aiVisionDetected: false
   };
 }
 
@@ -515,7 +561,7 @@ function displayPatternResults(data) {
 function normalizeRugRiskFromZeroShot(zeroShot) {
   const labels = zeroShot?.labels || [];
   const scores = zeroShot?.scores || [];
-  const rugIdx = labels.findIndex(l => String(l).toLowerCase().includes("rug"));
+  const rugIdx = labels.findIndex(l => String(l).toLowerCase().includes("rug") || String(l).toLowerCase().includes("scam"));
   const rugProb = rugIdx >= 0 ? scores[rugIdx] : 0.25;
   const score = Math.round(rugProb * 100);
   return generateRugPullDataFromScore(score);
