@@ -4,28 +4,23 @@ let currentChart = null;
 let currentTokenData = null;
 
 document.addEventListener("DOMContentLoaded", () => {
-  // icons
   if (window.lucide?.createIcons) window.lucide.createIcons();
 
-  // buttons
   document.getElementById("analyzeBtn")?.addEventListener("click", analyzeContract);
   document.getElementById("resetBtn")?.addEventListener("click", resetAnalysis);
   document.getElementById("aiBtn")?.addEventListener("click", runAIAnalysis);
   document.getElementById("alertBtn")?.addEventListener("click", setAlert);
   document.getElementById("chartBtn")?.addEventListener("click", viewChart);
 
-  // examples
   document.querySelectorAll(".exampleBtn").forEach((btn) => {
     btn.addEventListener("click", () => loadExample(btn.dataset.example));
   });
 
-  // enter key
   const input = document.getElementById("contractInput");
   input?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") analyzeContract();
   });
 
-  // copy CA
   document.getElementById("contractAddress")?.addEventListener("click", () => {
     const el = document.getElementById("contractAddress");
     const full = el?.dataset.fullAddress;
@@ -33,7 +28,6 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
-// ---------- UI helpers ----------
 function show(elId) {
   const el = document.getElementById(elId);
   if (el) el.classList.remove("hidden");
@@ -75,7 +69,6 @@ async function copyToClipboard(text) {
   }
 }
 
-// ---------- Examples ----------
 function loadExample(type) {
   const examples = {
     bonk: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
@@ -87,7 +80,6 @@ function loadExample(type) {
   if (input) input.value = examples[type] || "";
 }
 
-// ---------- Reset ----------
 function resetAnalysis() {
   currentTokenData = null;
 
@@ -98,7 +90,6 @@ function resetAnalysis() {
   const input = document.getElementById("contractInput");
   if (input) input.value = "";
 
-  // AI sections reset
   hide("sentimentResult");
   show("sentimentPlaceholder");
   hide("patternResult");
@@ -115,12 +106,10 @@ function resetAnalysis() {
   if (window.lucide?.createIcons) window.lucide.createIcons();
 }
 
-// ---------- Main analysis (REAL API) ----------
 async function analyzeContract() {
   const raw = document.getElementById("contractInput")?.value?.trim() || "";
   if (!raw) return showToast("Enter a token mint address");
 
-  // Basic validation (not perfect, but blocks obvious junk)
   if (raw.length < 32 || raw.length > 50) {
     return showToast("That doesn't look like a Solana mint address");
   }
@@ -132,7 +121,6 @@ async function analyzeContract() {
   try {
     setLoadingStep("Calling Birdeye APIs…");
 
-    // Server-side endpoint
     const data = await getJSON(`/api/analyze?address=${encodeURIComponent(raw)}`);
 
     if (!data?.ok) {
@@ -146,7 +134,6 @@ async function analyzeContract() {
     hide("loadingState");
     show("analysisResults");
 
-    // chart
     initChart(currentTokenData?.chart?.points || []);
 
     if (window.lucide?.createIcons) window.lucide.createIcons();
@@ -169,7 +156,6 @@ async function getJSON(url) {
   return r.json();
 }
 
-// ---------- Render ----------
 function fmtUSD(n) {
   const num = Number(n);
   if (!isFinite(num)) return "--";
@@ -188,7 +174,7 @@ function fmtPrice(p) {
 }
 
 function renderResults(t) {
-  // header
+  // Header
   document.getElementById("tokenName").textContent = t.name || "Unknown";
   document.getElementById("tokenSymbol").textContent = t.symbol || "--";
   document.getElementById("tokenImage").src = t.logo || "";
@@ -197,12 +183,11 @@ function renderResults(t) {
   caEl.dataset.fullAddress = t.address;
   caEl.textContent = `Address: ${t.address.slice(0, 8)}...${t.address.slice(-8)}`;
 
-  // verified badge (we mark verified if Birdeye has basic metadata)
   const vb = document.getElementById("verifiedBadge");
   if (t.verified) vb.classList.remove("hidden");
   else vb.classList.add("hidden");
 
-  // price
+  // Price
   document.getElementById("currentPrice").textContent = fmtPrice(t.price);
   const ch = Number(t.priceChange24h);
   const priceChangeEl = document.getElementById("priceChange");
@@ -212,7 +197,7 @@ function renderResults(t) {
   document.getElementById("marketCap").textContent = fmtUSD(t.marketCap);
   document.getElementById("fdv").textContent = fmtUSD(t.fdv);
 
-  // liquidity
+  // Liquidity
   document.getElementById("totalLiquidity").textContent = fmtUSD(t.liquidityUSD);
   document.getElementById("lpLocked").textContent = isFinite(Number(t.lpLockedPct)) ? `${Number(t.lpLockedPct).toFixed(0)}%` : "--%";
   document.getElementById("mcapLiqRatio").textContent = isFinite(Number(t.mcapLiqRatio)) ? `${Number(t.mcapLiqRatio).toFixed(1)}x` : "--x";
@@ -224,7 +209,7 @@ function renderResults(t) {
       t.scores.liquidity > 70 ? "bg-green-500" : t.scores.liquidity > 40 ? "bg-yellow-500" : "bg-red-500"
     }`;
 
-  // volume
+  // Volume
   document.getElementById("volume24h").textContent = fmtUSD(t.volume24hUSD);
   document.getElementById("buySellRatio").textContent = t.buySellRatio ? `${t.buySellRatio.toFixed(2)}:1` : "--";
   document.getElementById("volumeScore").textContent = `${t.scores.volume}/100`;
@@ -239,13 +224,13 @@ function renderResults(t) {
       : "bg-red-900/50 text-red-400"
     }`;
 
-  // holders
+  // Holders
   document.getElementById("totalHolders").textContent = isFinite(Number(t.holders)) ? Number(t.holders).toLocaleString() : "--";
-  document.getElementById("holderGrowth").textContent = "--"; // needs trader endpoint (optional)
+  document.getElementById("holderGrowth").textContent = "--";
   document.getElementById("newBuyers24h").textContent = "--";
 
   document.getElementById("top10Holders").textContent = isFinite(Number(t.top10Pct)) ? `${Number(t.top10Pct).toFixed(1)}%` : "--%";
-  document.getElementById("devWallet").textContent = "--"; // dev wallet detection is non-trivial without heuristics
+  document.getElementById("devWallet").textContent = "--";
 
   const concRiskEl = document.getElementById("concentrationRisk");
   concRiskEl.textContent = t.concentrationLabel;
@@ -258,8 +243,8 @@ function renderResults(t) {
 
   document.getElementById("holderScore").textContent = `${t.scores.holders}/100`;
 
-  // overall
-  const overall = Math.round((t.scores.liquidity + t.scores.volume + t.scores.holders) / 3);
+  // ⭐ FIX: Use the API's overall score, not frontend calculation
+  const overall = t.scores.overall || Math.round((t.scores.liquidity + t.scores.volume + t.scores.holders) / 3);
   const scoreEl = document.getElementById("overallScore");
   scoreEl.textContent = overall;
   scoreEl.className = `text-3xl font-bold ${overall > 75 ? "text-green-400" : overall > 50 ? "text-yellow-400" : "text-red-400"}`;
@@ -276,7 +261,7 @@ function renderResults(t) {
     ratingEl.className = "px-3 py-1 rounded-full text-sm font-medium bg-red-500/20 text-red-400 border border-red-500/30";
   }
 
-  // recommendation
+  // Recommendation
   const rec = t.recommendation;
   const recBadge = document.getElementById("recommendationBadge");
   recBadge.textContent = rec;
@@ -289,7 +274,7 @@ function renderResults(t) {
   document.getElementById("exitPrice").textContent = fmtPrice(t.exitPrice);
   document.getElementById("analysisSummary").textContent = t.summary;
 
-  // risks
+  // Risks
   const riskGrid = document.getElementById("riskGrid");
   riskGrid.innerHTML = (t.risks || []).map(risk => `
     <div class="bg-gray-800/50 rounded-lg p-4 border ${risk.risk ? "border-red-500/30 bg-red-900/10" : "border-green-500/30 bg-green-900/10"}">
@@ -299,7 +284,6 @@ function renderResults(t) {
   `).join("");
 }
 
-// ---------- Chart ----------
 function initChart(points) {
   if (!window.Chart) {
     console.warn("Chart.js not loaded");
@@ -359,7 +343,6 @@ function initChart(points) {
   });
 }
 
-// ---------- Buttons ----------
 function setAlert() {
   showToast("Alert saved (demo)");
 }
@@ -369,13 +352,9 @@ function viewChart() {
   window.open(`https://dexscreener.com/solana/${currentTokenData.address}`, "_blank");
 }
 
-// ========================================
-// AI (server-side /api/*, no keys client)
-// ========================================
 async function runAIAnalysis() {
   if (!currentTokenData) return showToast("Analyze a token first");
 
-  // reset
   hide("aiAnalysisError");
 
   hide("sentimentResult"); show("sentimentPlaceholder");
@@ -395,18 +374,15 @@ async function runAIAnalysis() {
       postJSON("/api/rugrisk", { summary })
     ]);
 
-    // sentiment
     if (sentimentRes?.ok) {
       displaySentimentResults(normalizeSentimentFromPreds(sentimentRes.preds, currentTokenData.name));
       hide("sentimentPlaceholder"); show("sentimentResult");
     }
 
-    // pattern (we do simple heuristic from chart slope here)
     const patternData = heuristicPatternFromChart(currentTokenData?.chart?.points || []);
     displayPatternResults(patternData);
     hide("patternPlaceholder"); show("patternResult");
 
-    // rug risk
     if (rugRes?.ok) {
       const z = rugRes.data;
       const riskData = normalizeRugRiskFromZeroShot(z);
@@ -438,7 +414,6 @@ async function postJSON(url, body) {
   return data;
 }
 
-// ---------- Sentiment ----------
 function normalizeSentimentFromPreds(preds = [], tokenName) {
   const pos = preds.find(p => p.label === "positive")?.score || 0;
   const neu = preds.find(p => p.label === "neutral")?.score || 0;
@@ -482,7 +457,6 @@ function displaySentimentResults(data) {
   `).join("");
 }
 
-// ---------- Pattern (simple heuristic) ----------
 function heuristicPatternFromChart(points) {
   if (!points.length) {
     return {
@@ -538,7 +512,6 @@ function displayPatternResults(data) {
   document.getElementById("patternPrediction").textContent = data.prediction;
 }
 
-// ---------- Rug risk ----------
 function normalizeRugRiskFromZeroShot(zeroShot) {
   const labels = zeroShot?.labels || [];
   const scores = zeroShot?.scores || [];
