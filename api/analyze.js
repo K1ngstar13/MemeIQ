@@ -1,5 +1,6 @@
 // Enhanced Meme Coin Analysis API - Compatible with your frontend
 // Uses: Birdeye (primary), HuggingFace (sentiment), Helius (dev tracking)
+// Updated: 2026-02-21 - Fresh deployment with new Birdeye key
 
 export default async function handler(req, res) {
   try {
@@ -53,21 +54,26 @@ export default async function handler(req, res) {
         return null;
       }
       const r = pr.value;
+      
+      // Log response details
+      console.log(`Response status: ${r.status} for ${r.url}`);
+      
       if (!r.ok) {
         const text = await r.text().catch(() => '');
-        console.error(`HTTP ${r.status}:`, text.slice(0, 200));
-        return null;
+        console.error(`HTTP ${r.status} for ${r.url}:`, text.slice(0, 500));
+        return { error: `HTTP ${r.status}`, details: text.slice(0, 200) };
       }
       const ct = r.headers.get('content-type') || '';
       if (!ct.includes('application/json')) {
-        console.error('Not JSON:', ct);
-        return null;
+        const text = await r.text().catch(() => '');
+        console.error('Not JSON:', ct, text.slice(0, 200));
+        return { error: 'Not JSON', contentType: ct };
       }
       try {
         return await r.json();
       } catch (e) {
         console.error('JSON parse error:', e.message);
-        return null;
+        return { error: 'JSON parse failed' };
       }
     }
 
