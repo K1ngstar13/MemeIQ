@@ -224,10 +224,16 @@ function renderResults(t) {
       : "bg-red-900/50 text-red-400"
     }`;
 
-  // Holders
+  // Holders - FIXED TO USE API DATA
   document.getElementById("totalHolders").textContent = isFinite(Number(t.holders)) ? Number(t.holders).toLocaleString() : "--";
-  document.getElementById("holderGrowth").textContent = "--";
-  document.getElementById("newBuyers24h").textContent = "--";
+  
+  // Holder growth - read from API response
+  const growth24h = t.holderGrowth24h || "0.0";
+  const growth7d = t.holderGrowth7d || "0.0";
+  document.getElementById("holderGrowth").textContent = `${growth24h}% (24h) • ${growth7d}% (7d)`;
+  
+  // New buyers - read from API response
+  document.getElementById("newBuyers24h").textContent = isFinite(Number(t.newBuyers24h)) ? Number(t.newBuyers24h).toLocaleString() : "--";
 
   document.getElementById("top10Holders").textContent = isFinite(Number(t.top10Pct)) ? `${Number(t.top10Pct).toFixed(1)}%` : "--%";
   document.getElementById("devWallet").textContent = "--";
