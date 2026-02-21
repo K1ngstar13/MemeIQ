@@ -35,15 +35,23 @@ export default async function handler(req, res) {
     const now = Math.floor(Date.now() / 1000);
     const from = now - 60 * 60 * 24 * 7;
     urls.ohlcv = `https://public-api.birdeye.so/defi/v3/ohlcv?address=${encodeURIComponent(address)}&type=1D&time_from=${from}&time_to=${now}`;
+    
+    // Holder history for growth calculation
+    const oneDayAgo = now - 86400;
+    const sevenDaysAgo = now - (86400 * 7);
+    urls.holderHistory24h = `https://public-api.birdeye.so/defi/v3/token/holder?address=${encodeURIComponent(address)}&time_to=${oneDayAgo}`;
+    urls.holderHistory7d = `https://public-api.birdeye.so/defi/v3/token/holder?address=${encodeURIComponent(address)}&time_to=${sevenDaysAgo}`;
 
-    const [overviewR, marketR, liqR, holdersR, distR, secR, ohlcvR] = await Promise.allSettled([
+    const [overviewR, marketR, liqR, holdersR, distR, secR, ohlcvR, holderHistory24hR, holderHistory7dR] = await Promise.allSettled([
       fetch(urls.overview, { headers }),
       fetch(urls.market,   { headers }),
       fetch(urls.liq,      { headers }),
       fetch(urls.holders,  { headers }),
       fetch(urls.dist,     { headers }),
       fetch(urls.security, { headers }),
-      fetch(urls.ohlcv,    { headers })
+      fetch(urls.ohlcv,    { headers }),
+      fetch(urls.holderHistory24h, { headers }),
+      fetch(urls.holderHistory7d, { headers })
     ]);
 
     async function safeJson(pr) {
@@ -61,6 +69,8 @@ export default async function handler(req, res) {
     const dist     = await safeJson(distR);
     const security = await safeJson(secR);
     const ohlcv    = await safeJson(ohlcvR);
+    const holderHistory24h = await safeJson(holderHistory24hR);
+    const holderHistory7d = await safeJson(holderHistory7dR);
 
     if (!overview?.data) {
       return res.status(400).json({
@@ -85,8 +95,20 @@ export default async function handler(req, res) {
     const liqTotal = Number(ov.liquidity || liq?.data?.totalLiquidity || liq?.data?.liquidity || 0);
     const mcapLiqRatio = liqTotal > 0 ? (mcap / liqTotal) : 0;
 
-    // Holders
+    // Holders - current, 24h ago, 7d ago
     const totalHolders = Number(holders?.data?.totalHolders || holders?.data?.holders || ov.holders || 0);
+    const holders24hAgo = Number(holderHistory24h?.data?.totalHolders || holderHistory24h?.data?.holders || 0);
+    const holders7dAgo = Number(holderHistory7d?.data?.totalHolders || holderHistory7d?.data?.holders || 0);
+    
+    // Calculate growth
+    const holderGrowth24h = holders24hAgo > 0 ? ((totalHolders - holders24hAgo) / holders24hAgo) * 100 : 0;
+    const holderGrowth7d = holders7dAgo > 0 ? ((totalHolders - holders7dAgo) / holders7dAgo) * 100 : 0;
+    
+    // Growth trend label
+    const holderGrowthTrend = 
+      holderGrowth24h > 5 ? 'Strong Growth 🟢' :
+      holderGrowth24h > 0 ? 'Growing 🟡' :
+      holderGrowth24h < -5 ? 'Declining 🔴' : 'Stable ⚪';
 
     // Top 10 concentration
     let top10Pct = 0;
@@ -362,8 +384,11 @@ export default async function handler(req, res) {
       buySellRatio: null,
       washRiskLabel: washTrading,
 
-      // Holders
+      // Holders (WITH GROWTH DATA)
       holders: totalHolders,
+      holderGrowth24h: Number.isFinite(holderGrowth24h) ? holderGrowth24h.toFixed(1) : '0.0',
+      holderGrowth7d: Number.isFinite(holderGrowth7d) ? holderGrowth7d.toFixed(1) : '0.0',
+      holderGrowthTrend: holderGrowthTrend,
       top10Pct: top10Pct || 0,
       concentrationLabel: concentration,
 
@@ -392,7 +417,7 @@ export default async function handler(req, res) {
       devActivity: devActivity,
 
       // For AI analysis (if you use it)
-      summaryForAI: `${name} (${symbol}): Overall score ${overall}/100. Liquidity: ${liquidityScore}/100 (${lpLockedPct}% locked). Volume: ${volumeScore}/100 (wash risk: ${washTrading}). Holders: ${holderScore}/100 (${concentration} concentration, top 10 hold ${top10Pct}%). ${devActivity.suspiciousActivity ? 'Dev has been selling recently.' : 'No recent dev sells.'} ${sentimentData.available ? `Social sentiment: ${sentimentData.bullish}% bullish.` : ''}`
+      summaryForAI: `${name} (${symbol}): Overall score ${overall}/100. Liquidity: ${liquidityScore}/100 (${lpLockedPct}% locked). Volume: ${volumeScore}/100 (wash risk: ${washTrading}). Holders: ${holderScore}/100 (${concentration} concentration, top 10 hold ${top10Pct}%). Holder growth: ${holderGrowth24h.toFixed(1)}% (24h), ${holderGrowth7d.toFixed(1)}% (7d). ${devActivity.suspiciousActivity ? 'Dev has been selling recently.' : 'No recent dev sells.'} ${sentimentData.available ? `Social sentiment: ${sentimentData.bullish}% bullish.` : ''}`
     };
 
     return res.status(200).json({ ok: true, token });
