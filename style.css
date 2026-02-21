@@ -1,75 +1,142 @@
-/* Simple, clean MemeIQ styles */
-
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
+    font-family: 'Inter', sans-serif;
+    background: #0a0e1a;
 }
 
-.hidden {
-  display: none !important;
+.mono {
+    font-family: 'JetBrains Mono', monospace;
 }
 
-/* Smooth transitions */
-* {
-  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+.gradient-text {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
 }
 
-/* Button hover */
-button:hover {
-  opacity: 0.9;
+.glass-panel {
+    background: rgba(15, 23, 42, 0.8);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(99, 102, 241, 0.2);
 }
 
-button:active {
-  transform: scale(0.98);
+.metric-card {
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.9) 100%);
+    border: 1px solid rgba(99, 102, 241, 0.15);
+    transition: all 0.3s ease;
 }
 
-/* Input focus */
-input:focus {
-  outline: none;
+.metric-card:hover {
+    border-color: rgba(99, 102, 241, 0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 40px -10px rgba(99, 102, 241, 0.2);
 }
 
-/* Scrollbar */
+.score-ring {
+    background: conic-gradient(var(--color) var(--percentage), rgba(30, 41, 59, 0.5) 0);
+}
+
+.pulse-dot {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.5s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.risk-high { color: #ef4444; }
+.risk-medium { color: #f59e0b; }
+.risk-low { color: #10b981; }
+
+.bg-risk-high { background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.5); }
+.bg-risk-medium { background: rgba(245, 158, 11, 0.2); border-color: rgba(245, 158, 11, 0.5); }
+.bg-risk-low { background: rgba(16, 185, 129, 0.2); border-color: rgba(16, 185, 129, 0.5); }
+
+/* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
+    width: 8px;
+    height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #1f2937;
+    background: #0f172a;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #4b5563;
-  border-radius: 4px;
+    background: #334155;
+    border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #6b7280;
+    background: #475569;
 }
 
-/* Card shadows */
-.bg-gray-800 {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-}
-
-/* Loading spinner */
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
+/* Loading animation enhancements */
 .animate-spin {
-  animation: spin 1s linear infinite;
+    animation: spin 1s linear infinite;
 }
 
-/* Responsive */
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Toast notification */
+.toast {
+    position: fixed;
+    bottom: 1rem;
+    right: 1rem;
+    background: rgb(79 70 229);
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    z-index: 50;
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* AI Analysis specific styles */
+.ai-loading {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(255,255,255,.1);
+    border-radius: 50%;
+    border-top-color: currentColor;
+    animation: spin 1s ease-in-out infinite;
+}
+
+.sentiment-positive { color: #10b981; }
+.sentiment-neutral { color: #6b7280; }
+.sentiment-negative { color: #ef4444; }
+
+/* Responsive adjustments */
 @media (max-width: 768px) {
-  body {
-    font-size: 14px;
-  }
-  
-  h1 {
-    font-size: 1.5rem;
-  }
-  
-  h2 {
-    font-size: 1.25rem;
-  }
+    .glass-panel {
+        padding: 1.5rem;
+    }
+    
+    .metric-card {
+        padding: 1rem;
+    }
 }
