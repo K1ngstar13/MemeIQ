@@ -18,7 +18,8 @@ export default async function handler(req, res) {
     const headers = {
       'X-API-KEY': birdeyeKey,
       'x-chain': 'solana',
-      'accept': 'application/json'
+      'accept': 'application/json',
+      'content-type': 'application/json'
     };
 
     // ==================== BIRDEYE API CALLS ====================
@@ -47,11 +48,27 @@ export default async function handler(req, res) {
     ]);
 
     async function safeJson(pr) {
-      if (pr.status !== 'fulfilled') return null;
+      if (pr.status !== 'fulfilled') {
+        console.error('Fetch failed:', pr.reason);
+        return null;
+      }
       const r = pr.value;
+      if (!r.ok) {
+        const text = await r.text().catch(() => '');
+        console.error(`HTTP ${r.status}:`, text.slice(0, 200));
+        return null;
+      }
       const ct = r.headers.get('content-type') || '';
-      if (!ct.includes('application/json')) return null;
-      return await r.json().catch(() => null);
+      if (!ct.includes('application/json')) {
+        console.error('Not JSON:', ct);
+        return null;
+      }
+      try {
+        return await r.json();
+      } catch (e) {
+        console.error('JSON parse error:', e.message);
+        return null;
+      }
     }
 
     const overview = await safeJson(overviewR);
@@ -63,9 +80,15 @@ export default async function handler(req, res) {
     const ohlcv    = await safeJson(ohlcvR);
 
     if (!overview?.data) {
+      console.error('Birdeye overview response:', JSON.stringify(overview, null, 2));
       return res.status(400).json({
         ok: false,
-        error: 'Birdeye did not return token_overview. Check address or API key quota.'
+        error: 'Birdeye did not return token_overview. Check address or API key quota.',
+        debug: {
+          hasOverview: !!overview,
+          overviewKeys: overview ? Object.keys(overview) : [],
+          rawResponse: overview
+        }
       });
     }
 
