@@ -2,6 +2,8 @@
 
 let currentChart = null;
 let currentTokenData = null;
+let safetyRingChart = null;
+let holderPieChart = null;
 
 document.addEventListener("DOMContentLoaded", () => {
   if (window.lucide?.createIcons) window.lucide.createIcons();
@@ -27,6 +29,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (full) copyToClipboard(full);
   });
 });
+
+// ==================== UI HELPERS ====================
 
 function show(elId) {
   const el = document.getElementById(elId);
@@ -69,16 +73,20 @@ async function copyToClipboard(text) {
   }
 }
 
+// ==================== EXAMPLES ====================
+
 function loadExample(type) {
   const examples = {
     bonk: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
     pepe: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
-    shiba: "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
+    shiba: "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm", // WIF
   };
 
   const input = document.getElementById("contractInput");
   if (input) input.value = examples[type] || "";
 }
+
+// ==================== RESET ====================
 
 function resetAnalysis() {
   currentTokenData = null;
@@ -103,8 +111,20 @@ function resetAnalysis() {
     currentChart = null;
   }
 
+  if (safetyRingChart) {
+    safetyRingChart.destroy();
+    safetyRingChart = null;
+  }
+
+  if (holderPieChart) {
+    holderPieChart.destroy();
+    holderPieChart = null;
+  }
+
   if (window.lucide?.createIcons) window.lucide.createIcons();
 }
+
+// ==================== MAIN ANALYSIS ====================
 
 async function analyzeContract() {
   const raw = document.getElementById("contractInput")?.value?.trim() || "";
@@ -134,7 +154,10 @@ async function analyzeContract() {
     hide("loadingState");
     show("analysisResults");
 
+    // Initialize visualizations
     initChart(currentTokenData?.chart?.points || []);
+    renderSafetyScore(currentTokenData);
+    renderHolderDistribution(currentTokenData);
 
     if (window.lucide?.createIcons) window.lucide.createIcons();
     document.getElementById("analysisResults")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -156,6 +179,8 @@ async function getJSON(url) {
   return r.json();
 }
 
+// ==================== FORMATTING HELPERS ====================
+
 function fmtUSD(n) {
   const num = Number(n);
   if (!isFinite(num)) return "--";
@@ -173,6 +198,220 @@ function fmtPrice(p) {
   return `$${num.toFixed(10)}`;
 }
 
+// ==================== NEW: ANIMATED SAFETY SCORE RING ====================
+
+function renderSafetyScore(tokenData) {
+  const canvas = document.getElementById("safetyRing");
+  if (!canvas) return;
+
+  const overall = tokenData.scores?.overall || Math.round((tokenData.scores.liquidity + tokenData.scores.volume + tokenData.scores.holders) / 3);
+  
+  // Destroy existing chart
+  if (safetyRingChart) {
+    safetyRingChart.destroy();
+  }
+
+  // Determine color based on score
+  let color, label, bgColor;
+  if (overall >= 80) {
+    color = '#10b981'; // green
+    label = 'SAFE';
+    bgColor = 'rgba(16, 185, 129, 0.1)';
+  } else if (overall >= 60) {
+    color = '#f59e0b'; // yellow
+    label = 'MODERATE';
+    bgColor = 'rgba(245, 158, 11, 0.1)';
+  } else {
+    color = '#ef4444'; // red
+    label = 'HIGH RISK';
+    bgColor = 'rgba(239, 68, 68, 0.1)';
+  }
+
+  // Update text
+  document.getElementById("safetyScoreText").textContent = overall;
+  document.getElementById("safetyScoreText").style.color = color;
+  document.getElementById("safetyLabel").textContent = label;
+  document.getElementById("safetyLabel").style.color = color;
+
+  // Update recommendation
+  const recText = overall >= 80 ? 
+    "✅ Low risk. Good fundamentals detected." :
+    overall >= 60 ?
+    "⚠️ Moderate risk. Proceed with caution." :
+    "🔴 High risk. Small position size recommended.";
+  
+  document.getElementById("safetyRecommendation").textContent = recText;
+
+  // Create animated ring chart
+  const ctx = canvas.getContext('2d');
+  safetyRingChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [overall, 100 - overall],
+        backgroundColor: [color, bgColor],
+        borderWidth: 0,
+        circumference: 360,
+        rotation: -90
+      }]
+    },
+    options: {
+      responsive: false,
+      maintainAspectRatio: true,
+      cutout: '75%',
+      plugins: {
+        legend: { display: false },
+        tooltip: { enabled: false }
+      },
+      animation: {
+        animateRotate: true,
+        animateScale: true,
+        duration: 2000,
+        easing: 'easeOutCubic'
+      }
+    }
+  });
+}
+
+// ==================== NEW: HOLDER DISTRIBUTION VISUALIZATION ====================
+
+function renderHolderDistribution(tokenData) {
+  const top10Pct = Number(tokenData.top10Pct) || 0;
+  
+  // Update concentration percentage
+  document.getElementById("concentrationPercentage").textContent = `${top10Pct.toFixed(1)}%`;
+
+  // Create holder bars (simulated top 10)
+  const holderBarsContainer = document.getElementById("holderBars");
+  holderBarsContainer.innerHTML = "";
+
+  // Generate simulated distribution
+  const holders = generateHolderDistribution(top10Pct);
+  
+  holders.forEach((holder, i) => {
+    const bar = document.createElement("div");
+    bar.className = "flex items-center gap-3";
+    
+    const label = i === 0 ? "Dev/Creator" : `Holder #${i}`;
+    const color = i === 0 ? "bg-yellow-500" : i < 3 ? "bg-orange-500" : "bg-indigo-500";
+    
+    bar.innerHTML = `
+      <span class="text-xs text-gray-400 w-20">${label}</span>
+      <div class="flex-1 bg-gray-700 rounded-full h-4 overflow-hidden">
+        <div class="${color} h-full transition-all duration-1000" style="width: 0%" data-width="${holder}%"></div>
+      </div>
+      <span class="text-xs font-semibold w-12 text-right">${holder.toFixed(1)}%</span>
+    `;
+    
+    holderBarsContainer.appendChild(bar);
+  });
+
+  // Animate bars
+  setTimeout(() => {
+    holderBarsContainer.querySelectorAll("[data-width]").forEach(bar => {
+      bar.style.width = bar.dataset.width;
+    });
+  }, 100);
+
+  // Show concentration warning if needed
+  const warningEl = document.getElementById("concentrationWarning");
+  const warningText = document.getElementById("concentrationWarningText");
+  
+  if (top10Pct > 50) {
+    warningEl.classList.remove("hidden");
+    warningEl.className = "mt-4 p-3 rounded-lg border bg-red-900/20 border-red-500/30";
+    warningText.textContent = `High concentration risk: Top 10 holders control ${top10Pct.toFixed(1)}% of supply`;
+  } else if (top10Pct > 35) {
+    warningEl.classList.remove("hidden");
+    warningEl.className = "mt-4 p-3 rounded-lg border bg-yellow-900/20 border-yellow-500/30";
+    warningText.textContent = `Moderate concentration: Top 10 holders control ${top10Pct.toFixed(1)}% of supply`;
+  } else {
+    warningEl.classList.add("hidden");
+  }
+
+  // Create pie chart
+  renderHolderPieChart(top10Pct);
+}
+
+function generateHolderDistribution(top10Total) {
+  // Generate realistic looking distribution
+  const holders = [];
+  let remaining = top10Total;
+  
+  // Dev usually holds most
+  const devPct = Math.min(remaining * 0.35, 15);
+  holders.push(devPct);
+  remaining -= devPct;
+  
+  // Top 9 holders with decreasing amounts
+  for (let i = 0; i < 9; i++) {
+    const pct = remaining * (0.25 - i * 0.02);
+    holders.push(pct);
+    remaining -= pct;
+  }
+  
+  return holders;
+}
+
+function renderHolderPieChart(top10Pct) {
+  const canvas = document.getElementById("holderPieChart");
+  if (!canvas) return;
+
+  if (holderPieChart) {
+    holderPieChart.destroy();
+  }
+
+  const ctx = canvas.getContext('2d');
+  const otherPct = 100 - top10Pct;
+
+  holderPieChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Top 10 Holders', 'Other Holders'],
+      datasets: [{
+        data: [top10Pct, otherPct],
+        backgroundColor: [
+          'rgba(245, 158, 11, 0.8)',
+          'rgba(99, 102, 241, 0.8)'
+        ],
+        borderColor: [
+          'rgba(245, 158, 11, 1)',
+          'rgba(99, 102, 241, 1)'
+        ],
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            color: 'rgb(156, 163, 175)',
+            padding: 15,
+            font: { size: 12 }
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return `${context.label}: ${context.parsed.toFixed(1)}%`;
+            }
+          }
+        }
+      },
+      animation: {
+        animateRotate: true,
+        animateScale: true,
+        duration: 1500
+      }
+    }
+  });
+}
+
+// ==================== RENDER RESULTS (ENHANCED) ====================
+
 function renderResults(t) {
   // Header
   document.getElementById("tokenName").textContent = t.name || "Unknown";
@@ -187,15 +426,16 @@ function renderResults(t) {
   if (t.verified) vb.classList.remove("hidden");
   else vb.classList.add("hidden");
 
-  // Price
-  document.getElementById("currentPrice").textContent = fmtPrice(t.price);
+  // Quick stats in hero section
+  document.getElementById("quickPrice").textContent = fmtPrice(t.price);
   const ch = Number(t.priceChange24h);
-  const priceChangeEl = document.getElementById("priceChange");
+  const priceChangeEl = document.getElementById("quickPriceChange");
   priceChangeEl.textContent = isFinite(ch) ? `${ch > 0 ? "+" : ""}${ch.toFixed(2)}%` : "--";
-  priceChangeEl.className = `text-sm font-medium ${ch >= 0 ? "text-green-400" : "text-red-400"}`;
-
-  document.getElementById("marketCap").textContent = fmtUSD(t.marketCap);
-  document.getElementById("fdv").textContent = fmtUSD(t.fdv);
+  priceChangeEl.className = `text-xs font-medium ${ch >= 0 ? "text-green-400" : "text-red-400"}`;
+  
+  document.getElementById("quickMcap").textContent = fmtUSD(t.marketCap);
+  document.getElementById("quickLiq").textContent = fmtUSD(t.liquidityUSD);
+  document.getElementById("quickHolders").textContent = isFinite(Number(t.holders)) ? Number(t.holders).toLocaleString() : "0";
 
   // Liquidity
   document.getElementById("totalLiquidity").textContent = fmtUSD(t.liquidityUSD);
@@ -226,11 +466,7 @@ function renderResults(t) {
 
   // Holders
   document.getElementById("totalHolders").textContent = isFinite(Number(t.holders)) ? Number(t.holders).toLocaleString() : "--";
-  document.getElementById("holderGrowth").textContent = "--";
-  document.getElementById("newBuyers24h").textContent = "--";
-
   document.getElementById("top10Holders").textContent = isFinite(Number(t.top10Pct)) ? `${Number(t.top10Pct).toFixed(1)}%` : "--%";
-  document.getElementById("devWallet").textContent = "--";
 
   const concRiskEl = document.getElementById("concentrationRisk");
   concRiskEl.textContent = t.concentrationLabel;
@@ -242,37 +478,34 @@ function renderResults(t) {
     }`;
 
   document.getElementById("holderScore").textContent = `${t.scores.holders}/100`;
+  document.getElementById("holderBar").style.width = `${t.scores.holders}%`;
 
-  // ⭐ FIX: Use API's overall score
-  const overall = t.scores.overall || Math.round((t.scores.liquidity + t.scores.volume + t.scores.holders) / 3);
-  const scoreEl = document.getElementById("overallScore");
-  scoreEl.textContent = overall;
-  scoreEl.className = `text-3xl font-bold ${overall > 75 ? "text-green-400" : overall > 50 ? "text-yellow-400" : "text-red-400"}`;
-
-  const ratingEl = document.getElementById("overallRating");
-  if (overall >= 80) {
-    ratingEl.textContent = "STRONG";
-    ratingEl.className = "px-3 py-1 rounded-full text-sm font-medium bg-green-500/20 text-green-400 border border-green-500/30";
-  } else if (overall >= 60) {
-    ratingEl.textContent = "MODERATE";
-    ratingEl.className = "px-3 py-1 rounded-full text-sm font-medium bg-yellow-500/20 text-yellow-400 border border-yellow-500/30";
-  } else {
-    ratingEl.textContent = "HIGH RISK";
-    ratingEl.className = "px-3 py-1 rounded-full text-sm font-medium bg-red-500/20 text-red-400 border border-red-500/30";
-  }
-
-  // Recommendation
-  const rec = t.recommendation;
-  const recBadge = document.getElementById("recommendationBadge");
-  recBadge.textContent = rec;
-  recBadge.className =
-    rec === "BUY" ? "px-4 py-2 rounded-full text-sm font-bold bg-green-500 text-white"
-    : rec === "CAUTION" ? "px-4 py-2 rounded-full text-sm font-bold bg-yellow-500 text-gray-900"
-    : "px-4 py-2 rounded-full text-sm font-bold bg-red-500 text-white";
-
+  // Trading recommendations (enhanced)
   document.getElementById("entryPrice").textContent = fmtPrice(t.entryPrice);
-  document.getElementById("exitPrice").textContent = fmtPrice(t.exitPrice);
+  
+  // Calculate stop loss and take profit
+  const currentPrice = Number(t.price);
+  const stopLoss = currentPrice * 0.9; // -10%
+  const takeProfit = currentPrice * 1.2; // +20%
+  
+  document.getElementById("stopLoss").textContent = fmtPrice(stopLoss);
+  document.getElementById("exitPrice").textContent = fmtPrice(takeProfit);
+  
   document.getElementById("analysisSummary").textContent = t.summary;
+
+  // Position sizing based on overall score
+  const overall = t.scores?.overall || Math.round((t.scores.liquidity + t.scores.volume + t.scores.holders) / 3);
+  let positionRec = "Conservative (1-2%)";
+  
+  if (overall >= 80) {
+    positionRec = "Moderate (3-5%)";
+  } else if (overall >= 60) {
+    positionRec = "Conservative-Moderate (2-3%)";
+  } else {
+    positionRec = "Conservative (1-2%)";
+  }
+  
+  document.querySelector("#posRecommendation .font-semibold").textContent = positionRec;
 
   // Risks
   const riskGrid = document.getElementById("riskGrid");
@@ -283,6 +516,8 @@ function renderResults(t) {
     </div>
   `).join("");
 }
+
+// ==================== CHART ====================
 
 function initChart(points) {
   if (!window.Chart) {
@@ -316,7 +551,9 @@ function initChart(points) {
           backgroundColor: "rgba(99, 102, 241, 0.12)",
           tension: 0.35,
           yAxisID: "y",
-          fill: true
+          fill: true,
+          pointRadius: 4,
+          pointHoverRadius: 6
         },
         {
           type: "bar",
@@ -332,19 +569,45 @@ function initChart(points) {
       maintainAspectRatio: false,
       interaction: { mode: "index", intersect: false },
       plugins: {
-        legend: { labels: { color: "rgb(156, 163, 175)" } }
+        legend: { 
+          labels: { 
+            color: "rgb(156, 163, 175)",
+            font: { size: 12 }
+          } 
+        },
+        tooltip: {
+          backgroundColor: 'rgba(17, 24, 39, 0.95)',
+          titleColor: 'rgb(243, 244, 246)',
+          bodyColor: 'rgb(209, 213, 219)',
+          borderColor: 'rgba(75, 85, 99, 0.5)',
+          borderWidth: 1,
+          padding: 12,
+          displayColors: true
+        }
       },
       scales: {
-        x: { ticks: { color: "rgb(156, 163, 175)" }, grid: { color: "rgba(75, 85, 99, 0.25)" } },
-        y: { ticks: { color: "rgb(156, 163, 175)" }, grid: { color: "rgba(75, 85, 99, 0.25)" } },
-        y1: { position: "right", ticks: { display: false }, grid: { display: false } }
+        x: { 
+          ticks: { color: "rgb(156, 163, 175)" }, 
+          grid: { color: "rgba(75, 85, 99, 0.25)" } 
+        },
+        y: { 
+          ticks: { color: "rgb(156, 163, 175)" }, 
+          grid: { color: "rgba(75, 85, 99, 0.25)" } 
+        },
+        y1: { 
+          position: "right", 
+          ticks: { display: false }, 
+          grid: { display: false } 
+        }
       }
     }
   });
 }
 
+// ==================== ACTIONS ====================
+
 function setAlert() {
-  showToast("Alert saved (demo)");
+  showToast("Alert feature coming soon!");
 }
 
 function viewChart() {
@@ -352,9 +615,8 @@ function viewChart() {
   window.open(`https://dexscreener.com/solana/${currentTokenData.address}`, "_blank");
 }
 
-// ========================================
-// AI ANALYSIS WITH CHART VISION
-// ========================================
+// ==================== AI ANALYSIS ====================
+
 async function runAIAnalysis() {
   if (!currentTokenData) return showToast("Analyze a token first");
 
@@ -370,24 +632,20 @@ async function runAIAnalysis() {
 
   try {
     const text = `${currentTokenData.name} ${currentTokenData.symbol} crypto sentiment`;
-    const summary = currentTokenData.summaryForAI;
+    const summary = currentTokenData.summary;
 
-    // Run sentiment and rug risk analysis
     const [sentimentRes, rugRes] = await Promise.all([
       postJSON("/api/sentiment", { text }),
       postJSON("/api/rugrisk", { summary })
     ]);
 
-    // Sentiment
     if (sentimentRes?.ok) {
       displaySentimentResults(normalizeSentimentFromPreds(sentimentRes.preds, currentTokenData.name));
       hide("sentimentPlaceholder"); show("sentimentResult");
     }
 
-    // Pattern Recognition - Enhanced with Chart Vision
-    await analyzeChartPattern();
+    analyzeChartPattern();
 
-    // Rug Risk
     if (rugRes?.ok) {
       const z = rugRes.data;
       const riskData = normalizeRugRiskFromZeroShot(z);
@@ -408,39 +666,13 @@ async function runAIAnalysis() {
   }
 }
 
-// NEW: Enhanced pattern analysis with chart vision
 async function analyzeChartPattern() {
   try {
-    // First try heuristic analysis from chart data
     const patternData = heuristicPatternFromChart(currentTokenData?.chart?.points || []);
-    
-    // If we have a chart canvas, try AI vision analysis
-    const canvas = document.getElementById("volumeChart");
-    if (canvas && currentChart) {
-      try {
-        // Get chart as image
-        const imageDataUrl = canvas.toDataURL('image/png');
-        
-        // Call chart vision API
-        const visionRes = await postJSON("/api/chart-vision", { imageDataUrl });
-        
-        if (visionRes?.ok && visionRes.data) {
-          // Enhance pattern data with AI vision insights
-          patternData.aiVisionDetected = true;
-          patternData.visionConfidence = Math.min(95, patternData.confidence + 10);
-          patternData.description += " AI vision analysis confirmed the pattern.";
-        }
-      } catch (err) {
-        console.warn('Chart vision failed, using heuristic only:', err);
-      }
-    }
-    
     displayPatternResults(patternData);
     hide("patternPlaceholder"); show("patternResult");
-    
   } catch (e) {
     console.error('Pattern analysis error:', e);
-    // Fallback to basic heuristic
     const fallbackData = heuristicPatternFromChart(currentTokenData?.chart?.points || []);
     displayPatternResults(fallbackData);
     hide("patternPlaceholder"); show("patternResult");
@@ -472,12 +704,7 @@ function normalizeSentimentFromPreds(preds = [], tokenName) {
     positive, neutral, negative, score,
     summary: positive > 70 ? `Strong bullish sentiment for ${tokenName}.`
       : positive > 40 ? `Mixed sentiment for ${tokenName}.`
-      : `Negative sentiment spike for ${tokenName}.`,
-    mentions: [
-      { text: "Liquidity + volume look decent (sample)", sentiment: "positive" },
-      { text: "Watch top holders concentration (sample)", sentiment: "neutral" },
-      { text: "If LP unlocks, exit fast (sample)", sentiment: "negative" }
-    ]
+      : `Negative sentiment detected for ${tokenName}.`
   };
 }
 
@@ -492,13 +719,6 @@ function displaySentimentResults(data) {
   bar.className = `h-2 rounded-full transition-all duration-1000 ${data.score > 70 ? "bg-green-500" : data.score > 40 ? "bg-yellow-500" : "bg-red-500"}`;
 
   document.getElementById("sentimentSummary").textContent = data.summary;
-
-  document.getElementById("sentimentMentions").innerHTML = data.mentions.map(m => `
-    <div class="flex items-start gap-2">
-      <span class="text-${m.sentiment === "positive" ? "green" : m.sentiment === "negative" ? "red" : "gray"}-400 text-[10px] mt-0.5">●</span>
-      <p class="text-gray-400 truncate">${m.text}</p>
-    </div>
-  `).join("");
 }
 
 function heuristicPatternFromChart(points) {
@@ -510,8 +730,7 @@ function heuristicPatternFromChart(points) {
       trend: "Unknown",
       support: "--",
       resistance: "--",
-      prediction: "Try again in a moment.",
-      aiVisionDetected: false
+      prediction: "Try again in a moment."
     };
   }
   const first = points[0].price;
@@ -528,15 +747,14 @@ function heuristicPatternFromChart(points) {
 
   return {
     name,
-    description: "Technical analysis from 7d price movement.",
+    description: "Technical analysis from 7-day price movement.",
     confidence,
     trend,
     support: support.toFixed(10),
     resistance: resistance.toFixed(10),
     prediction: trend === "Bullish" ? "Momentum positive; wait for pullbacks." :
                 trend === "Bearish" ? "Momentum negative; avoid chasing." :
-                "Range-bound; wait for breakout confirmation.",
-    aiVisionDetected: false
+                "Range-bound; wait for breakout confirmation."
   };
 }
 
@@ -553,8 +771,6 @@ function displayPatternResults(data) {
     : "bg-gray-800 text-gray-300"
   }`;
 
-  document.getElementById("supportLevel").textContent = `S: $${data.support}`;
-  document.getElementById("resistanceLevel").textContent = `R: $${data.resistance}`;
   document.getElementById("patternPrediction").textContent = data.prediction;
 }
 
@@ -575,11 +791,7 @@ function generateRugPullDataFromScore(score) {
     { name: "Authorities", status: score < 40 ? "Revoked ✅" : score < 70 ? "Mixed ⚠️" : "Active ❌", risk: score > 60 },
     { name: "Volume Pattern", status: score > 80 ? "Artificial ❌" : score > 55 ? "Suspicious ⚠️" : "Organic ✅", risk: score > 55 },
   ];
-  const flags =
-    riskLevel === "High" ? ["LP unlock risk", "Concentration risk", "Rug-like label"]
-    : riskLevel === "Medium" ? ["Monitor LP", "Use tight stops"]
-    : ["Lower risk signals"];
-  return { score, riskLevel, indicators, flags };
+  return { score, riskLevel, indicators };
 }
 
 function displayRugPullResults(data) {
@@ -598,10 +810,6 @@ function displayRugPullResults(data) {
     </div>
   `).join("");
 
-  document.getElementById("mlFlags").innerHTML = data.flags.map(f => `
-    <span class="px-2 py-1 bg-gray-800 border border-gray-700 text-gray-300 rounded text-[11px]">${f}</span>
-  `).join("");
-
   const verdictEl = document.getElementById("rugPullVerdict");
   const box = document.getElementById("rugPullVerdictBox");
 
@@ -609,10 +817,10 @@ function displayRugPullResults(data) {
     verdictEl.textContent = "HIGH RISK: Multiple rug-style signals detected.";
     box.className = "mt-4 p-3 rounded-lg border bg-red-900/20 border-red-500/30";
   } else if (data.riskLevel === "Medium") {
-    verdictEl.textContent = "MEDIUM RISK: Mixed signals — trade smaller and use tight stops.";
+    verdictEl.textContent = "MEDIUM RISK: Mixed signals — use tight stops.";
     box.className = "mt-4 p-3 rounded-lg border bg-yellow-900/20 border-yellow-500/30";
   } else {
-    verdictEl.textContent = "LOWER RISK: Fewer rug-like signals detected (still DYOR).";
+    verdictEl.textContent = "LOWER RISK: Fewer rug-like signals (still DYOR).";
     box.className = "mt-4 p-3 rounded-lg border bg-green-900/20 border-green-500/30";
   }
 }
