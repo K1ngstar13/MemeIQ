@@ -119,9 +119,43 @@ async function analyzeContract() {
   hide("analysisResults");
 
   try {
-    setLoadingStep("Calling Birdeye APIs…");
+    setLoadingStep("Fetching data from Birdeye...");
 
-    const data = await getJSON(`/api/analyze?address=${encodeURIComponent(raw)}`);
+    // Add retry logic for cold starts
+    let data;
+    let attempts = 0;
+    const maxAttempts = 2;
+    
+    while (attempts < maxAttempts) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+        
+        const response = await fetch(`/api/analyze?address=${encodeURIComponent(raw)}`, {
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        data = await response.json();
+        
+        if (data?.ok) {
+          break; // Success!
+        }
+        
+        // If first attempt failed, try once more
+        if (attempts === 0) {
+          setLoadingStep("Retrying... (cold start)");
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      } catch (e) {
+        if (attempts === 0) {
+          setLoadingStep("Retrying... (warming up)");
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      attempts++;
+    }
 
     if (!data?.ok) {
       console.error("Analyze error:", data);
