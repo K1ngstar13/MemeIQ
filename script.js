@@ -26,6 +26,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const full = el?.dataset.fullAddress;
     if (full) copyToClipboard(full);
   });
+  
+  // Prewarm the API on page load to avoid cold starts
+  setTimeout(() => {
+    fetch('/api/keep-warm').catch(() => {});
+  }, 1000);
 });
 
 function show(elId) {
