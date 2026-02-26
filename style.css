@@ -1,142 +1,590 @@
+/* ============================================
+   MemeIQ — Dynamic Crypto Intelligence UI
+   ============================================ */
+
 body {
-    font-family: 'Inter', sans-serif;
-    background: #0a0e1a;
+  font-family: 'Inter', sans-serif;
+  background: #050810;
+  color: #e2e8f0;
+  overflow-x: hidden;
 }
 
 .mono {
-    font-family: 'JetBrains Mono', monospace;
+  font-family: 'JetBrains Mono', monospace;
 }
+
+/* ============================================
+   ANIMATED BACKGROUND
+   ============================================ */
+
+#bgCanvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Radial glow blobs behind content */
+.bg-blob {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  z-index: 0;
+  animation: blobFloat 12s ease-in-out infinite;
+}
+
+.bg-blob-1 {
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.12) 0%, transparent 70%);
+  top: -10%;
+  right: -5%;
+  animation-duration: 15s;
+}
+
+.bg-blob-2 {
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.1) 0%, transparent 70%);
+  bottom: 20%;
+  left: -10%;
+  animation-duration: 18s;
+  animation-delay: -5s;
+}
+
+.bg-blob-3 {
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.08) 0%, transparent 70%);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  animation-duration: 20s;
+  animation-delay: -10s;
+}
+
+@keyframes blobFloat {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(30px, -20px) scale(1.05); }
+  50% { transform: translate(-20px, 30px) scale(0.95); }
+  75% { transform: translate(20px, 20px) scale(1.02); }
+}
+
+/* ============================================
+   TYPOGRAPHY & GRADIENT TEXT
+   ============================================ */
 
 .gradient-text {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+  background: linear-gradient(135deg, #818cf8 0%, #a78bfa 50%, #c084fc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
+.gradient-text-cyan {
+  background: linear-gradient(135deg, #22d3ee 0%, #818cf8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ============================================
+   GLASS PANELS & CARDS
+   ============================================ */
+
 .glass-panel {
-    background: rgba(15, 23, 42, 0.8);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(99, 102, 241, 0.2);
+  background: rgba(10, 14, 33, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.4),
+              inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .metric-card {
-    background: linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.9) 100%);
-    border: 1px solid rgba(99, 102, 241, 0.15);
-    transition: all 0.3s ease;
+  background: linear-gradient(135deg, rgba(15, 23, 50, 0.9) 0%, rgba(10, 14, 33, 0.95) 100%);
+  border: 1px solid rgba(99, 102, 241, 0.12);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.metric-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.3), transparent);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.metric-card:hover::before {
+  opacity: 1;
 }
 
 .metric-card:hover {
-    border-color: rgba(99, 102, 241, 0.4);
-    transform: translateY(-2px);
-    box-shadow: 0 10px 40px -10px rgba(99, 102, 241, 0.2);
+  border-color: rgba(99, 102, 241, 0.35);
+  transform: translateY(-2px);
+  box-shadow: 0 16px 48px -12px rgba(99, 102, 241, 0.2),
+              0 4px 16px -4px rgba(0, 0, 0, 0.5);
 }
+
+/* ============================================
+   HEADER
+   ============================================ */
+
+header {
+  background: rgba(5, 8, 16, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(99, 102, 241, 0.1);
+  box-shadow: 0 4px 32px rgba(0, 0, 0, 0.3);
+}
+
+/* ============================================
+   SCORE RINGS & INDICATORS
+   ============================================ */
 
 .score-ring {
-    background: conic-gradient(var(--color) var(--percentage), rgba(30, 41, 59, 0.5) 0);
+  background: conic-gradient(var(--color) var(--percentage), rgba(30, 41, 59, 0.5) 0);
 }
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
 
 .pulse-dot {
-    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  animation: pulseDot 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+  50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
 }
 
 .animate-fade-in {
-    animation: fadeIn 0.5s ease-out;
+  animation: fadeIn 0.6s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.risk-high { color: #ef4444; }
-.risk-medium { color: #f59e0b; }
-.risk-low { color: #10b981; }
-
-.bg-risk-high { background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.5); }
-.bg-risk-medium { background: rgba(245, 158, 11, 0.2); border-color: rgba(245, 158, 11, 0.5); }
-.bg-risk-low { background: rgba(16, 185, 129, 0.2); border-color: rgba(16, 185, 129, 0.5); }
-
-/* Custom scrollbar */
-::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+.animate-float {
+  animation: float 6s ease-in-out infinite;
 }
 
-::-webkit-scrollbar-track {
-    background: #0f172a;
+@keyframes float {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  33% { transform: translateY(-12px) rotate(3deg); }
+  66% { transform: translateY(6px) rotate(-2deg); }
 }
 
-::-webkit-scrollbar-thumb {
-    background: #334155;
-    border-radius: 4px;
+.animate-pulse-slow {
+  animation: pulseSlow 4s ease-in-out infinite;
 }
 
-::-webkit-scrollbar-thumb:hover {
-    background: #475569;
+@keyframes pulseSlow {
+  0%, 100% { opacity: 0.2; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.08); }
 }
 
-/* Loading animation enhancements */
+/* Spin used for loading spinners */
 .animate-spin {
-    animation: spin 1s linear infinite;
+  animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
-/* Toast notification */
+/* Slow glow pulse for score rings */
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(99, 102, 241, 0.3); }
+  50% { box-shadow: 0 0 24px rgba(99, 102, 241, 0.6), 0 0 48px rgba(99, 102, 241, 0.2); }
+}
+
+.glow-pulse {
+  animation: glowPulse 3s ease-in-out infinite;
+}
+
+/* ============================================
+   SKELETON LOADING STATES
+   ============================================ */
+
+.skeleton-card {
+  background: linear-gradient(
+    90deg,
+    rgba(20, 27, 58, 0.6) 0%,
+    rgba(36, 47, 100, 0.4) 50%,
+    rgba(20, 27, 58, 0.6) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+  border: 1px solid rgba(99, 102, 241, 0.08);
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* ============================================
+   RISK & SENTIMENT COLORS
+   ============================================ */
+
+.risk-high { color: #f87171; }
+.risk-medium { color: #fbbf24; }
+.risk-low { color: #34d399; }
+
+.bg-risk-high {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.bg-risk-medium {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.bg-risk-low {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+.sentiment-positive { color: #34d399; }
+.sentiment-neutral { color: #9ca3af; }
+.sentiment-negative { color: #f87171; }
+
+/* ============================================
+   BUBBLE MAP
+   ============================================ */
+
+#bubbleMapContainer {
+  background: radial-gradient(ellipse at 50% 50%,
+    rgba(15, 20, 50, 0.8) 0%,
+    rgba(5, 8, 20, 0.9) 100%);
+  border: 1px solid rgba(99, 102, 241, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+#bubbleMapCanvas {
+  display: block;
+}
+
+.bubble-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(10, 14, 33, 0.8);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 2px 8px;
+  font-size: 10px;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.bubble-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ============================================
+   SENTIMENT BAR (GRADIENT)
+   ============================================ */
+
+.sentiment-gradient-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #ef4444 0%, #f59e0b 40%, #10b981 100%);
+  position: relative;
+}
+
+.sentiment-cursor {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: white;
+  border: 2px solid #1e1b4b;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+  transition: left 1s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ============================================
+   SCROLLBAR
+   ============================================ */
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #050810; }
+::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #334155; }
+
+/* ============================================
+   TOAST NOTIFICATIONS
+   ============================================ */
+
 .toast {
-    position: fixed;
-    bottom: 1rem;
-    right: 1rem;
-    background: rgb(79 70 229);
-    color: white;
-    padding: 0.75rem 1.5rem;
-    border-radius: 0.5rem;
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-    z-index: 50;
-    animation: slideIn 0.3s ease-out;
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  color: white;
+  padding: 0.75rem 1.25rem;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px -4px rgba(79, 70, 229, 0.4);
+  z-index: 100;
+  font-size: 0.875rem;
+  font-weight: 500;
+  animation: toastIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  max-width: 320px;
 }
 
-@keyframes slideIn {
-    from {
-        transform: translateX(100%);
-        opacity: 0;
-    }
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
+@keyframes toastIn {
+  from { transform: translateX(100%) scale(0.8); opacity: 0; }
+  to { transform: translateX(0) scale(1); opacity: 1; }
 }
 
-/* AI Analysis specific styles */
-.ai-loading {
-    display: inline-block;
-    width: 20px;
-    height: 20px;
-    border: 3px solid rgba(255,255,255,.1);
-    border-radius: 50%;
-    border-top-color: currentColor;
-    animation: spin 1s ease-in-out infinite;
+/* ============================================
+   TELEGRAM CTA
+   ============================================ */
+
+.telegram-cta {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.15) 0%, rgba(99, 102, 241, 0.1) 100%);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: 12px;
+  padding: 1rem 1.5rem;
+  text-align: center;
+  font-size: 0.875rem;
+  color: #a5b4fc;
 }
 
-.sentiment-positive { color: #10b981; }
-.sentiment-neutral { color: #6b7280; }
-.sentiment-negative { color: #ef4444; }
+/* ============================================
+   SCORE BADGE GLOW
+   ============================================ */
 
-/* Responsive adjustments */
+.score-glow-green {
+  text-shadow: 0 0 20px rgba(52, 211, 153, 0.6);
+}
+
+.score-glow-yellow {
+  text-shadow: 0 0 20px rgba(251, 191, 36, 0.6);
+}
+
+.score-glow-red {
+  text-shadow: 0 0 20px rgba(248, 113, 113, 0.6);
+}
+
+/* ============================================
+   PROGRESS BARS
+   ============================================ */
+
+.progress-bar-track {
+  background: rgba(30, 41, 59, 0.6);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.progress-bar-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 30px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2));
+  border-radius: 99px;
+}
+
+/* ============================================
+   HERO SECTION
+   ============================================ */
+
+#heroSection {
+  min-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ============================================
+   RISK GRID ITEMS
+   ============================================ */
+
+.risk-item {
+  background: rgba(10, 14, 33, 0.6);
+  border-radius: 10px;
+  padding: 12px;
+  border: 1px solid rgba(99, 102, 241, 0.08);
+  transition: all 0.2s ease;
+}
+
+.risk-item:hover {
+  border-color: rgba(99, 102, 241, 0.2);
+}
+
+.risk-item.risk {
+  border-color: rgba(239, 68, 68, 0.2);
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.risk-item.safe {
+  border-color: rgba(16, 185, 129, 0.2);
+  background: rgba(16, 185, 129, 0.05);
+}
+
+/* ============================================
+   CHART CANVAS WRAPPER
+   ============================================ */
+
+.chart-wrapper {
+  position: relative;
+  padding: 4px;
+  border-radius: 10px;
+  background: rgba(10, 14, 33, 0.4);
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+
 @media (max-width: 768px) {
-    .glass-panel {
-        padding: 1.5rem;
-    }
-    
-    .metric-card {
-        padding: 1rem;
-    }
+  .glass-panel { padding: 1rem; }
+  .metric-card { padding: 1rem; }
+  .bg-blob { display: none; }
+}
+
+/* ============================================
+   SEARCH INPUT GLOW
+   ============================================ */
+
+#contractInput:focus {
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2), 0 0 20px rgba(99, 102, 241, 0.1);
+}
+
+/* Analyzing state for input */
+#contractInput.analyzing {
+  border-color: rgba(99, 102, 241, 0.5);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15), 0 0 20px rgba(99, 102, 241, 0.1);
+}
+
+/* ============================================
+   GOD RAYS CSS OVERLAY
+   ============================================ */
+
+.god-rays-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.god-ray {
+  position: absolute;
+  top: -50%;
+  right: -10%;
+  width: 2px;
+  background: linear-gradient(180deg, transparent 0%, rgba(99, 102, 241, 0.04) 40%, rgba(139, 92, 246, 0.06) 60%, transparent 100%);
+  transform-origin: top right;
+  animation: rayRotate 25s linear infinite;
+}
+
+.god-ray:nth-child(1) { height: 300%; width: 120px; animation-delay: 0s; }
+.god-ray:nth-child(2) { height: 280%; width: 80px; animation-delay: -4s; transform: rotate(15deg); }
+.god-ray:nth-child(3) { height: 320%; width: 60px; animation-delay: -8s; transform: rotate(30deg); }
+.god-ray:nth-child(4) { height: 260%; width: 100px; animation-delay: -12s; transform: rotate(45deg); }
+.god-ray:nth-child(5) { height: 290%; width: 70px; animation-delay: -16s; transform: rotate(60deg); }
+.god-ray:nth-child(6) { height: 310%; width: 90px; animation-delay: -20s; transform: rotate(75deg); }
+
+@keyframes rayRotate {
+  0% { transform: rotate(var(--start, 0deg)); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 0.5; }
+  100% { transform: rotate(calc(var(--start, 0deg) + 360deg)); opacity: 0; }
+}
+
+/* ============================================
+   HOLDER COUNT DISPLAY
+   ============================================ */
+
+.holder-count-display {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(6, 182, 212, 0.08));
+  border: 1px solid rgba(16, 185, 129, 0.15);
+  border-radius: 10px;
+  padding: 12px;
+  text-align: center;
+}
+
+/* ============================================
+   RECOMMENDATION BADGE
+   ============================================ */
+
+.rec-buy {
+  background: linear-gradient(135deg, #059669, #10b981);
+  color: white;
+  box-shadow: 0 4px 16px -4px rgba(16, 185, 129, 0.5);
+}
+
+.rec-caution {
+  background: linear-gradient(135deg, #d97706, #fbbf24);
+  color: #1a1a1a;
+  box-shadow: 0 4px 16px -4px rgba(251, 191, 36, 0.4);
+}
+
+.rec-avoid {
+  background: linear-gradient(135deg, #dc2626, #ef4444);
+  color: white;
+  box-shadow: 0 4px 16px -4px rgba(239, 68, 68, 0.5);
+}
+
+/* ============================================
+   TOKEN IMAGE FALLBACK
+   ============================================ */
+
+#tokenImage {
+  object-fit: cover;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+}
+
+/* ============================================
+   VERIFIED BADGE
+   ============================================ */
+
+#verifiedBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(10, 14, 33, 0.9);
 }
