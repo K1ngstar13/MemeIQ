@@ -509,12 +509,22 @@
           <i data-lucide="circle-dot" class="w-4 h-4 text-indigo-400"></i>
           Holder Bubble Map
         </h3>
-        <p class="text-[11px] text-gray-600 mb-4">Token distribution visualized by wallet size — larger bubble = larger holding</p>
+        <p class="text-[11px] text-gray-600 mb-4">Each bubble = a wallet. Size = % of supply held. Filled = top holder. Outlined = community.</p>
 
-        <div id="bubbleMapContainer" class="relative w-full rounded-xl overflow-hidden border border-gray-800/30" style="height: 280px;">
-          <canvas id="bubbleMapCanvas"></canvas>
-          <div id="bubbleLegend" class="absolute bottom-3 left-3 flex flex-wrap gap-1.5"></div>
-          <div id="bubbleTooltip" class="absolute hidden bg-gray-900/95 border border-gray-700 rounded-lg px-3 py-2 text-xs pointer-events-none z-10 shadow-xl"></div>
+        <!-- Split: canvas left, holder list right -->
+        <div class="flex gap-3" style="height: 300px;">
+
+          <!-- Bubble canvas -->
+          <div id="bubbleMapContainer" class="flex-1 relative rounded-xl overflow-hidden border border-gray-800/30 bg-[#040813] min-w-0">
+            <canvas id="bubbleMapCanvas" style="display:block;width:100%;height:100%;"></canvas>
+            <div id="bubbleTooltip" class="absolute hidden bg-gray-900/95 border border-gray-700/80 rounded-lg px-3 py-2 text-xs pointer-events-none z-10 shadow-xl min-w-max"></div>
+          </div>
+
+          <!-- Holder list -->
+          <div id="holderList" class="w-44 flex flex-col gap-0 overflow-y-auto shrink-0 rounded-xl bg-gray-900/30 border border-gray-800/30 p-1"
+               style="scrollbar-width:thin;scrollbar-color:#1e293b transparent;">
+            <!-- Populated by renderBubbleMap() -->
+          </div>
         </div>
       </div>
 

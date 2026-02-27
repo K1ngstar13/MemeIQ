@@ -3,11 +3,12 @@
 // ============================================================
 //  Global State
 // ============================================================
-let currentChart    = null;
+let currentChart     = null;
 let currentTokenData = null;
 let bubbleAnimFrame  = null;
 let bgAnimFrame      = null;
 let analysisDebounce = null;
+let analysisId       = 0;   // incremented on every new analysis — prevents stale renders
 
 const DEFAULT_TOKEN = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"; // BONK
 
@@ -17,7 +18,6 @@ const DEFAULT_TOKEN = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"; // BONK
 document.addEventListener("DOMContentLoaded", () => {
   if (window.lucide?.createIcons) window.lucide.createIcons();
 
-  // Wire up UI
   document.getElementById("resetBtn")?.addEventListener("click", resetAnalysis);
   document.getElementById("alertBtn")?.addEventListener("click", () => showToast("Alert saved (demo)"));
   document.getElementById("chartBtn")?.addEventListener("click", viewChart);
@@ -31,21 +31,28 @@ document.addEventListener("DOMContentLoaded", () => {
       };
       const addr = examples[btn.dataset.example] || "";
       const input = document.getElementById("contractInput");
-      if (input) { input.value = addr; triggerAutoAnalysis(); }
+      if (input) {
+        input.value = addr;
+        clearTimeout(analysisDebounce);
+        // Hide hero immediately on example click
+        hide("heroSection");
+        triggerAutoAnalysis();
+      }
     });
   });
 
-  // Auto-analyze on input change (debounce 900ms)
   const input = document.getElementById("contractInput");
   if (input) {
     input.addEventListener("input", () => {
       clearTimeout(analysisDebounce);
       const val = input.value.trim();
+      // Immediately collapse hero as soon as user starts typing
+      if (val.length > 0) hide("heroSection");
       if (val.length >= 32 && val.length <= 50) {
-        setSearchStatus("analyzing", "Analyzing…");
+        setSearchStatus("analyzing", "Ready…");
         analysisDebounce = setTimeout(triggerAutoAnalysis, 900);
       } else if (val.length > 0) {
-        setSearchStatus("idle", val.length < 32 ? "Too short…" : "Invalid length");
+        setSearchStatus("idle", val.length < 32 ? "Keep typing…" : "Too long");
       } else {
         setSearchStatus("idle", "");
       }
@@ -56,29 +63,23 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   document.getElementById("contractAddress")?.addEventListener("click", () => {
-    const full = currentTokenData?.address;
-    if (full) copyToClipboard(full);
+    if (currentTokenData?.address) copyToClipboard(currentTokenData.address);
   });
 
-  // Start animated background
   initBackground();
-
-  // Pre-warm API
   setTimeout(() => fetch("/api/keep-warm").catch(() => {}), 1000);
 
   // Auto-analyze BONK on load
-  document.getElementById("heroLoadingText").textContent = "Loading BONK analysis…";
   input.value = DEFAULT_TOKEN;
   setTimeout(() => analyzeContract(DEFAULT_TOKEN, true), 400);
 });
 
 // ============================================================
-//  Background Animation (Particle + God Rays)
+//  Background Canvas (Stars + God Rays + Nebula Blobs)
 // ============================================================
 function initBackground() {
   const canvas = document.getElementById("bgCanvas");
   if (!canvas) return;
-
   const ctx = canvas.getContext("2d");
   let W = window.innerWidth, H = window.innerHeight;
   canvas.width = W; canvas.height = H;
@@ -88,126 +89,101 @@ function initBackground() {
     canvas.width = W; canvas.height = H;
   });
 
-  // Stars
   const stars = Array.from({ length: 120 }, () => ({
-    x: Math.random() * W,
-    y: Math.random() * H,
-    r: Math.random() * 1.5 + 0.3,
-    speed: Math.random() * 0.15 + 0.05,
-    opacity: Math.random() * 0.5 + 0.1,
+    x: Math.random() * W, y: Math.random() * H,
+    r: Math.random() * 1.4 + 0.3,
+    speed: Math.random() * 0.12 + 0.04,
+    opacity: Math.random() * 0.45 + 0.1,
     twinkle: Math.random() * Math.PI * 2
   }));
 
-  // Moving nebula blobs
   const blobs = [
-    { x: W * 0.8, y: H * 0.1, r: 300, color: "99,102,241", speed: 0.0003, angle: 0 },
-    { x: W * 0.1, y: H * 0.7, r: 250, color: "139,92,246", speed: 0.0004, angle: 1 },
-    { x: W * 0.5, y: H * 0.5, r: 200, color: "6,182,212",  speed: 0.0005, angle: 2 }
+    { x: W * 0.82, y: H * 0.12, r: 320, color: "99,102,241", angle: 0, speed: 0.00025 },
+    { x: W * 0.08, y: H * 0.72, r: 270, color: "139,92,246", angle: 1.0, speed: 0.00033 },
+    { x: W * 0.48, y: H * 0.52, r: 210, color: "6,182,212",  angle: 2.1, speed: 0.00042 }
   ];
 
   let frame = 0;
-
   function draw() {
     ctx.clearRect(0, 0, W, H);
     frame++;
 
-    // Draw nebula blobs
+    // Nebula blobs
     blobs.forEach(b => {
       b.angle += b.speed;
-      const ox = Math.sin(b.angle * 1.3) * 60;
-      const oy = Math.cos(b.angle * 0.9) * 50;
-      const grd = ctx.createRadialGradient(b.x + ox, b.y + oy, 0, b.x + ox, b.y + oy, b.r);
-      grd.addColorStop(0, `rgba(${b.color}, 0.07)`);
-      grd.addColorStop(1, "transparent");
-      ctx.fillStyle = grd;
-      ctx.beginPath();
-      ctx.arc(b.x + ox, b.y + oy, b.r, 0, Math.PI * 2);
-      ctx.fill();
+      const ox = Math.sin(b.angle * 1.3) * 55;
+      const oy = Math.cos(b.angle * 0.9) * 48;
+      const g = ctx.createRadialGradient(b.x + ox, b.y + oy, 0, b.x + ox, b.y + oy, b.r);
+      g.addColorStop(0, `rgba(${b.color},0.07)`);
+      g.addColorStop(1, "transparent");
+      ctx.beginPath(); ctx.arc(b.x + ox, b.y + oy, b.r, 0, Math.PI * 2);
+      ctx.fillStyle = g; ctx.fill();
     });
 
     // God rays from top-right
-    const rayOriginX = W * 0.9;
-    const rayOriginY = -50;
+    const ox = W * 0.88, oy = -60;
     for (let i = 0; i < 5; i++) {
-      const t = (frame * 0.002 + i * 0.7) % (Math.PI * 2);
-      const angle = Math.PI * 0.55 + Math.sin(t) * 0.25 + i * 0.12;
-      const length = W * 2;
-      const grad = ctx.createLinearGradient(
-        rayOriginX, rayOriginY,
-        rayOriginX + Math.cos(angle) * length,
-        rayOriginY + Math.sin(angle) * length
-      );
-      const alpha = (0.015 + Math.sin(t * 1.5) * 0.01).toFixed(3);
-      grad.addColorStop(0, `rgba(99,102,241,${alpha})`);
-      grad.addColorStop(0.5, `rgba(139,92,246,${(alpha * 0.5).toFixed(3)})`);
-      grad.addColorStop(1, "transparent");
+      const t = (frame * 0.0018 + i * 0.65) % (Math.PI * 2);
+      const angle = Math.PI * 0.56 + Math.sin(t) * 0.22 + i * 0.11;
+      const len = W * 2.2;
+      const alpha = (0.012 + Math.sin(t * 1.4) * 0.008).toFixed(4);
+      const g = ctx.createLinearGradient(ox, oy,
+        ox + Math.cos(angle) * len, oy + Math.sin(angle) * len);
+      g.addColorStop(0, `rgba(99,102,241,${alpha})`);
+      g.addColorStop(0.5, `rgba(139,92,246,${(alpha * 0.5).toFixed(4)})`);
+      g.addColorStop(1, "transparent");
+      const spread = 0.035;
       ctx.beginPath();
-      ctx.moveTo(rayOriginX, rayOriginY);
-      const spreadAngle = 0.04;
-      ctx.lineTo(
-        rayOriginX + Math.cos(angle + spreadAngle) * length,
-        rayOriginY + Math.sin(angle + spreadAngle) * length
-      );
-      ctx.lineTo(
-        rayOriginX + Math.cos(angle - spreadAngle) * length,
-        rayOriginY + Math.sin(angle - spreadAngle) * length
-      );
+      ctx.moveTo(ox, oy);
+      ctx.lineTo(ox + Math.cos(angle + spread) * len, oy + Math.sin(angle + spread) * len);
+      ctx.lineTo(ox + Math.cos(angle - spread) * len, oy + Math.sin(angle - spread) * len);
       ctx.closePath();
-      ctx.fillStyle = grad;
-      ctx.fill();
+      ctx.fillStyle = g; ctx.fill();
     }
 
     // Stars
     stars.forEach(s => {
       s.twinkle += s.speed * 0.04;
-      const opacity = s.opacity * (0.6 + 0.4 * Math.sin(s.twinkle));
+      const op = s.opacity * (0.6 + 0.4 * Math.sin(s.twinkle));
       ctx.beginPath();
       ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(200,210,255,${opacity.toFixed(2)})`;
-      ctx.fill();
+      ctx.fillStyle = `rgba(200,210,255,${op.toFixed(2)})`; ctx.fill();
     });
 
     bgAnimFrame = requestAnimationFrame(draw);
   }
-
   draw();
 }
 
 // ============================================================
-//  Utility: Show / Hide / Status
+//  Helpers
 // ============================================================
-function show(elId) { document.getElementById(elId)?.classList.remove("hidden"); }
-function hide(elId) { document.getElementById(elId)?.classList.add("hidden"); }
+function show(id) { document.getElementById(id)?.classList.remove("hidden"); }
+function hide(id) { document.getElementById(id)?.classList.add("hidden"); }
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 function setSearchStatus(state, text) {
-  const statusText  = document.getElementById("searchStatusText");
-  const spinner     = document.getElementById("searchSpinner");
-  const done        = document.getElementById("searchDone");
-  const input       = document.getElementById("contractInput");
-
-  if (statusText) statusText.textContent = text || "";
-  if (statusText) statusText.classList.toggle("hidden", !text);
-
-  spinner?.classList.toggle("hidden", state !== "analyzing");
+  const txt  = document.getElementById("searchStatusText");
+  const spin = document.getElementById("searchSpinner");
+  const done = document.getElementById("searchDone");
+  const inp  = document.getElementById("contractInput");
+  if (txt)  { txt.textContent = text || ""; txt.classList.toggle("hidden", !text); }
+  spin?.classList.toggle("hidden", state !== "analyzing");
   done?.classList.toggle("hidden", state !== "done");
-  input?.classList.toggle("analyzing", state === "analyzing");
+  inp?.classList.toggle("analyzing", state === "analyzing");
 }
 
 function showToast(message, type = "info") {
-  const existing = document.querySelector(".toast");
-  if (existing) existing.remove();
-
-  const toast = document.createElement("div");
-  toast.className = "toast";
-  toast.textContent = message;
-  if (type === "error") toast.style.background = "linear-gradient(135deg,#dc2626,#ef4444)";
-  document.body.appendChild(toast);
-
+  document.querySelector(".toast")?.remove();
+  const t = document.createElement("div");
+  t.className = "toast";
+  t.textContent = message;
+  if (type === "error") t.style.background = "linear-gradient(135deg,#dc2626,#ef4444)";
+  document.body.appendChild(t);
   setTimeout(() => {
-    toast.style.opacity = "0";
-    toast.style.transform = "translateX(120%)";
-    toast.style.transition = "all 0.3s ease-out";
-    setTimeout(() => toast.remove(), 300);
+    t.style.opacity = "0"; t.style.transform = "translateX(120%)";
+    t.style.transition = "all 0.3s ease-out";
+    setTimeout(() => t.remove(), 300);
   }, 3500);
 }
 
@@ -216,97 +192,6 @@ async function copyToClipboard(text) {
   catch { showToast("Copy failed", "error"); }
 }
 
-// ============================================================
-//  Auto-Analysis Trigger
-// ============================================================
-function triggerAutoAnalysis() {
-  const raw = document.getElementById("contractInput")?.value?.trim() || "";
-  if (raw.length >= 32 && raw.length <= 50) analyzeContract(raw, false);
-}
-
-// ============================================================
-//  Core: analyzeContract
-// ============================================================
-async function analyzeContract(addressOverride, isInitialLoad = false) {
-  const raw = addressOverride || document.getElementById("contractInput")?.value?.trim() || "";
-
-  if (!raw || raw.length < 32 || raw.length > 50) {
-    if (!isInitialLoad) showToast("Enter a valid Solana token mint address");
-    return;
-  }
-
-  // Update UI to loading state
-  hide("heroSection");
-  hide("analysisResults");
-  show("loadingState");
-  setSearchStatus("analyzing", "Fetching…");
-
-  // Show AI placeholders (spinning)
-  hide("sentimentResult");   show("sentimentPlaceholder");
-  hide("patternResult");     show("patternPlaceholder");
-  hide("rugPullResult");     show("rugPullPlaceholder");
-  hide("aiAnalysisError");
-  show("aiLoadingIndicator");
-
-  try {
-    let data;
-    let attempts = 0;
-    const maxAttempts = 3;
-
-    while (attempts < maxAttempts) {
-      try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 35000);
-        const resp = await fetch(`/api/analyze?address=${encodeURIComponent(raw)}`, { signal: controller.signal });
-        clearTimeout(timer);
-        data = await resp.json();
-        if (data?.ok) break;
-        if (attempts < maxAttempts - 1) {
-          setSearchStatus("analyzing", `Retry ${attempts + 1}…`);
-          await sleep(1200 * (attempts + 1));
-        }
-      } catch {
-        if (attempts < maxAttempts - 1) await sleep(1200 * (attempts + 1));
-      }
-      attempts++;
-    }
-
-    if (!data?.ok) throw new Error(data?.error || "Analysis failed – check token address");
-
-    currentTokenData = data.token;
-    renderResults(currentTokenData);
-
-    hide("loadingState");
-    show("analysisResults");
-
-    initChart(currentTokenData?.chart?.points || []);
-    renderBubbleMap(currentTokenData);
-
-    if (window.lucide?.createIcons) window.lucide.createIcons();
-
-    setSearchStatus("done", currentTokenData.symbol);
-    setTimeout(() => setSearchStatus("idle", ""), 3000);
-
-    // Scroll to results if user triggered (not initial load)
-    if (!isInitialLoad) {
-      document.getElementById("analysisResults")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-
-    // Auto-run AI analysis after main analysis
-    setTimeout(() => runAIAnalysis(), 300);
-
-  } catch (e) {
-    console.error(e);
-    hide("loadingState");
-    if (isInitialLoad) show("heroSection");
-    setSearchStatus("idle", "");
-    showToast(e?.message || "Failed to analyze token", "error");
-  }
-}
-
-// ============================================================
-//  Formatters
-// ============================================================
 function fmtUSD(n) {
   const num = Number(n);
   if (!isFinite(num) || num === 0) return "--";
@@ -319,191 +204,264 @@ function fmtUSD(n) {
 function fmtPrice(p) {
   const num = Number(p);
   if (!isFinite(num)) return "$--";
-  if (num >= 1)     return `$${num.toFixed(4)}`;
-  if (num >= 0.01)  return `$${num.toFixed(6)}`;
+  if (num >= 1)      return `$${num.toFixed(4)}`;
+  if (num >= 0.01)   return `$${num.toFixed(6)}`;
   if (num >= 0.0001) return `$${num.toFixed(8)}`;
   return `$${num.toFixed(12)}`;
 }
 
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+// ============================================================
+//  Auto-Analysis Trigger
+// ============================================================
+function triggerAutoAnalysis() {
+  const raw = document.getElementById("contractInput")?.value?.trim() || "";
+  if (raw.length >= 32 && raw.length <= 50) analyzeContract(raw, false);
+}
+
+// ============================================================
+//  Core: analyzeContract — with race-condition guard
+// ============================================================
+async function analyzeContract(addressOverride, isInitialLoad = false) {
+  const myId = ++analysisId;  // Every call gets a unique ID
+
+  const raw = (addressOverride || document.getElementById("contractInput")?.value?.trim() || "").trim();
+  if (!raw || raw.length < 32 || raw.length > 50) {
+    if (!isInitialLoad) showToast("Enter a valid Solana token mint address");
+    return;
+  }
+
+  // ── Immediately collapse hero, show skeleton ──
+  hide("heroSection");
+  hide("analysisResults");
+  show("loadingState");
+  setSearchStatus("analyzing", "Fetching…");
+
+  // ── Reset all AI panels to loading spinners for this fresh coin ──
+  hide("sentimentResult");  show("sentimentPlaceholder");
+  hide("patternResult");    show("patternPlaceholder");
+  hide("rugPullResult");    show("rugPullPlaceholder");
+  hide("aiAnalysisError");
+  show("aiLoadingIndicator");
+
+  try {
+    let data;
+    let attempts = 0;
+    while (attempts < 3) {
+      try {
+        const ctrl = new AbortController();
+        const tid  = setTimeout(() => ctrl.abort(), 35000);
+        const resp = await fetch(`/api/analyze?address=${encodeURIComponent(raw)}`, { signal: ctrl.signal });
+        clearTimeout(tid);
+        data = await resp.json();
+        if (data?.ok) break;
+        if (attempts < 2) { setSearchStatus("analyzing", `Retry ${attempts + 1}…`); await sleep(1500 * (attempts + 1)); }
+      } catch {
+        if (attempts < 2) await sleep(1500 * (attempts + 1));
+      }
+      attempts++;
+    }
+
+    // ── Bail if a newer analysis already started ──
+    if (myId !== analysisId) return;
+
+    if (!data?.ok) throw new Error(data?.error || "Analysis failed — check the token address");
+
+    currentTokenData = data.token;
+    renderResults(currentTokenData);
+
+    // ── Always hide hero in the success path ──
+    hide("heroSection");
+    hide("loadingState");
+    show("analysisResults");
+
+    // Wait two frames so the container has real dimensions before drawing
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (myId !== analysisId) return;
+      initChart(currentTokenData?.chart?.points || []);
+      renderBubbleMap(currentTokenData);
+    }));
+
+    if (window.lucide?.createIcons) window.lucide.createIcons();
+
+    setSearchStatus("done", currentTokenData.symbol || "✓");
+    setTimeout(() => setSearchStatus("idle", ""), 3000);
+
+    if (!isInitialLoad) {
+      document.getElementById("analysisResults")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    // Auto-run AI analysis — pass myId so stale results never render
+    const capturedId = myId;
+    setTimeout(() => { if (capturedId === analysisId) runAIAnalysis(capturedId); }, 350);
+
+  } catch (e) {
+    // Bail silently if superseded
+    if (myId !== analysisId) return;
+
+    hide("loadingState");
+    hide("aiLoadingIndicator");
+    // Only restore hero on the very first load failure
+    if (isInitialLoad) show("heroSection");
+    setSearchStatus("idle", "");
+    showToast(e?.message || "Failed to analyze token", "error");
+  }
+}
 
 // ============================================================
 //  Render Results
 // ============================================================
 function renderResults(t) {
-  // Token header
-  document.getElementById("tokenName").textContent = t.name || "Unknown";
-  document.getElementById("tokenSymbol").textContent = t.symbol || "--";
-
+  // Header
+  document.getElementById("tokenName").textContent    = t.name   || "Unknown";
+  document.getElementById("tokenSymbol").textContent  = t.symbol || "--";
   const img = document.getElementById("tokenImage");
-  if (t.logo) { img.src = t.logo; } else { img.src = ""; }
+  img.src = t.logo || "";
 
-  const caEl = document.getElementById("contractAddress");
-  if (caEl) {
-    caEl.dataset.fullAddress = t.address;
-    caEl.textContent = `${t.address.slice(0, 10)}…${t.address.slice(-8)} (click to copy)`;
+  const ca = document.getElementById("contractAddress");
+  if (ca) {
+    ca.dataset.fullAddress = t.address;
+    ca.textContent = `${t.address.slice(0,10)}…${t.address.slice(-8)}  (click to copy)`;
   }
 
   const vb = document.getElementById("verifiedBadge");
-  if (t.verified) vb?.classList.remove("hidden"); else vb?.classList.add("hidden");
+  if (vb) t.verified ? vb.classList.remove("hidden") : vb.classList.add("hidden");
 
   // Price
   document.getElementById("currentPrice").textContent = fmtPrice(t.price);
   const ch = Number(t.priceChange24h);
-  const pcEl = document.getElementById("priceChange");
-  if (pcEl) {
-    pcEl.textContent = isFinite(ch) ? `${ch >= 0 ? "+" : ""}${ch.toFixed(2)}%` : "--";
-    pcEl.className = `text-xs font-medium ${ch >= 0 ? "text-emerald-400" : "text-red-400"}`;
+  const pc = document.getElementById("priceChange");
+  if (pc) {
+    pc.textContent = isFinite(ch) ? `${ch >= 0 ? "+" : ""}${ch.toFixed(2)}%` : "--";
+    pc.className   = `text-xs font-medium ${ch >= 0 ? "text-emerald-400" : "text-red-400"}`;
   }
 
   // Market stats
-  document.getElementById("marketCap").textContent = fmtUSD(t.marketCap);
-  document.getElementById("fdv").textContent        = fmtUSD(t.fdv);
-  document.getElementById("volume24h").textContent  = fmtUSD(t.volume24hUSD);
-  document.getElementById("buySellRatio").textContent = t.buySellRatio
-    ? `${t.buySellRatio.toFixed(2)}:1` : "--";
+  document.getElementById("marketCap").textContent  = fmtUSD(t.marketCap);
+  document.getElementById("fdv").textContent         = fmtUSD(t.fdv);
+  document.getElementById("volume24h").textContent   = fmtUSD(t.volume24hUSD);
+  document.getElementById("buySellRatio").textContent = t.buySellRatio ? `${Number(t.buySellRatio).toFixed(2)}:1` : "--";
 
   // Wash trading
-  const washEl = document.getElementById("washTradingRisk");
-  if (washEl) {
-    washEl.textContent = t.washRiskLabel || "--";
-    washEl.className = `px-2 py-0.5 rounded-full text-[10px] font-medium ${
-      t.washRiskLabel === "Low"    ? "bg-emerald-900/50 text-emerald-400 border border-emerald-500/20" :
-      t.washRiskLabel === "Medium" ? "bg-yellow-900/50 text-yellow-400 border border-yellow-500/20" :
-      "bg-red-900/50 text-red-400 border border-red-500/20"
+  const wash = document.getElementById("washTradingRisk");
+  if (wash) {
+    wash.textContent = t.washRiskLabel || "--";
+    wash.className   = `px-2 py-0.5 rounded-full text-[10px] font-medium border ${
+      t.washRiskLabel === "Low"    ? "bg-emerald-900/50 text-emerald-400 border-emerald-500/20" :
+      t.washRiskLabel === "Medium" ? "bg-yellow-900/50 text-yellow-400 border-yellow-500/20" :
+      "bg-red-900/50 text-red-400 border-red-500/20"
     }`;
   }
 
   // Liquidity
   document.getElementById("totalLiquidity").textContent = fmtUSD(t.liquidityUSD);
-  document.getElementById("lpLocked").textContent =
-    isFinite(Number(t.lpLockedPct)) ? `${Number(t.lpLockedPct).toFixed(0)}%` : "--%";
-  document.getElementById("mcapLiqRatio").textContent =
-    isFinite(Number(t.mcapLiqRatio)) ? `${Number(t.mcapLiqRatio)}x` : "--x";
+  document.getElementById("lpLocked").textContent       = isFinite(Number(t.lpLockedPct)) ? `${Number(t.lpLockedPct).toFixed(0)}%` : "--%";
+  document.getElementById("mcapLiqRatio").textContent   = isFinite(Number(t.mcapLiqRatio)) ? `${Number(t.mcapLiqRatio)}x` : "--x";
 
-  const liqScore = t.scores?.liquidity ?? 0;
-  document.getElementById("liquidityScore").textContent = `${liqScore}/100`;
-  const liqBar = document.getElementById("liquidityBar");
-  if (liqBar) {
-    liqBar.style.width = `${liqScore}%`;
-    liqBar.className = `progress-bar-fill h-full rounded-full transition-all duration-1000 bg-gradient-to-r ${
-      liqScore > 70 ? "from-emerald-600 to-emerald-400" :
-      liqScore > 40 ? "from-yellow-600 to-yellow-400" : "from-red-600 to-red-400"
+  const liq = t.scores?.liquidity ?? 0;
+  document.getElementById("liquidityScore").textContent = `${liq}/100`;
+  const lb = document.getElementById("liquidityBar");
+  if (lb) {
+    lb.style.width = `${liq}%`;
+    lb.className   = `progress-bar-fill h-full rounded-full transition-all duration-1000 bg-gradient-to-r ${
+      liq > 70 ? "from-emerald-600 to-emerald-400" :
+      liq > 40 ? "from-yellow-600 to-yellow-400" : "from-red-600 to-red-400"
     }`;
   }
 
   // Holders
-  document.getElementById("totalHolders").textContent =
-    isFinite(Number(t.holders)) ? Number(t.holders).toLocaleString() : "--";
-  document.getElementById("top10Holders").textContent =
-    isFinite(Number(t.top10Pct)) ? `${Number(t.top10Pct).toFixed(1)}%` : "--%";
-  document.getElementById("holderGrowth").textContent =
-    `${t.holderGrowth24h || "0.0"}% / ${t.holderGrowth7d || "0.0"}%`;
-  document.getElementById("newBuyers24h").textContent =
-    isFinite(Number(t.newBuyers24h)) ? Number(t.newBuyers24h).toLocaleString() : "--";
+  document.getElementById("totalHolders").textContent = isFinite(Number(t.holders)) ? Number(t.holders).toLocaleString() : "--";
+  document.getElementById("top10Holders").textContent  = isFinite(Number(t.top10Pct)) ? `${Number(t.top10Pct).toFixed(1)}%` : "--%";
+  document.getElementById("holderGrowth").textContent  = `${t.holderGrowth24h || "0.0"}% / ${t.holderGrowth7d || "0.0"}%`;
+  document.getElementById("newBuyers24h").textContent  = isFinite(Number(t.newBuyers24h)) ? Number(t.newBuyers24h).toLocaleString() : "--";
 
-  const concEl = document.getElementById("concentrationRisk");
-  if (concEl) {
-    concEl.textContent = t.concentrationLabel || "--";
-    concEl.className = `px-2 py-0.5 rounded-full text-[10px] font-medium ${
-      t.concentrationLabel === "Healthy"  ? "bg-emerald-900/40 text-emerald-400 border border-emerald-500/20" :
-      t.concentrationLabel === "Moderate" ? "bg-yellow-900/40 text-yellow-400 border border-yellow-500/20" :
-      "bg-red-900/40 text-red-400 border border-red-500/20"
+  const conc = document.getElementById("concentrationRisk");
+  if (conc) {
+    conc.textContent = t.concentrationLabel || "--";
+    conc.className   = `px-2 py-0.5 rounded-full text-[10px] font-medium border ${
+      t.concentrationLabel === "Healthy"  ? "bg-emerald-900/40 text-emerald-400 border-emerald-500/20" :
+      t.concentrationLabel === "Moderate" ? "bg-yellow-900/40 text-yellow-400 border-yellow-500/20" :
+      "bg-red-900/40 text-red-400 border-red-500/20"
     }`;
   }
 
-  const holderScore = t.scores?.holders ?? 0;
-  document.getElementById("holderScore").textContent = `${holderScore}/100`;
-  const holderBar = document.getElementById("holderBar");
-  if (holderBar) {
-    holderBar.style.width = `${holderScore}%`;
-    holderBar.className = `progress-bar-fill h-full rounded-full transition-all duration-1000 bg-gradient-to-r ${
-      holderScore > 70 ? "from-emerald-600 to-emerald-400" :
-      holderScore > 40 ? "from-yellow-600 to-yellow-400" : "from-red-600 to-red-400"
+  const hs = t.scores?.holders ?? 0;
+  document.getElementById("holderScore").textContent = `${hs}/100`;
+  const hb = document.getElementById("holderBar");
+  if (hb) {
+    hb.style.width = `${hs}%`;
+    hb.className   = `progress-bar-fill h-full rounded-full transition-all duration-1000 bg-gradient-to-r ${
+      hs > 70 ? "from-emerald-600 to-emerald-400" :
+      hs > 40 ? "from-yellow-600 to-yellow-400" : "from-red-600 to-red-400"
     }`;
   }
 
   // Overall score
   const overall = t.scores?.overall ?? 0;
-  const scoreEl = document.getElementById("overallScore");
-  if (scoreEl) {
-    scoreEl.textContent = overall;
-    scoreEl.className = `text-4xl font-black ${
+  const se = document.getElementById("overallScore");
+  if (se) {
+    se.textContent = overall;
+    se.className   = `text-4xl font-black ${
       overall > 75 ? "text-emerald-400 score-glow-green" :
       overall > 50 ? "text-yellow-400 score-glow-yellow" :
       "text-red-400 score-glow-red"
     }`;
   }
 
-  const ratingEl = document.getElementById("overallRating");
-  if (ratingEl) {
-    if (overall >= 80) {
-      ratingEl.textContent = "STRONG";
-      ratingEl.className = "px-3 py-1.5 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
-    } else if (overall >= 60) {
-      ratingEl.textContent = "MODERATE";
-      ratingEl.className = "px-3 py-1.5 rounded-full text-xs font-black bg-yellow-500/20 text-yellow-400 border border-yellow-500/30";
-    } else {
-      ratingEl.textContent = "HIGH RISK";
-      ratingEl.className = "px-3 py-1.5 rounded-full text-xs font-black bg-red-500/20 text-red-400 border border-red-500/30";
-    }
+  const re = document.getElementById("overallRating");
+  if (re) {
+    if (overall >= 80)      { re.textContent = "STRONG";    re.className = "px-3 py-1.5 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"; }
+    else if (overall >= 60) { re.textContent = "MODERATE";  re.className = "px-3 py-1.5 rounded-full text-xs font-black bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"; }
+    else                    { re.textContent = "HIGH RISK"; re.className = "px-3 py-1.5 rounded-full text-xs font-black bg-red-500/20 text-red-400 border border-red-500/30"; }
   }
 
   // Recommendation
-  const rec    = t.recommendation || "AVOID";
-  const recBadge = document.getElementById("recommendationBadge");
-  if (recBadge) {
-    recBadge.textContent = rec;
-    recBadge.className   = `px-3 py-1.5 rounded-full text-xs font-black ${
+  const rec = t.recommendation || "AVOID";
+  const rb  = document.getElementById("recommendationBadge");
+  if (rb) {
+    rb.textContent = rec;
+    rb.className   = `px-3 py-1.5 rounded-full text-xs font-black ${
       rec === "BUY" ? "rec-buy" : rec === "CAUTION" ? "rec-caution" : "rec-avoid"
     }`;
   }
 
-  document.getElementById("entryPrice").textContent = fmtPrice(t.entryPrice);
-  document.getElementById("exitPrice").textContent  = fmtPrice(t.exitPrice);
+  document.getElementById("entryPrice").textContent      = fmtPrice(t.entryPrice);
+  document.getElementById("exitPrice").textContent       = fmtPrice(t.exitPrice);
   document.getElementById("analysisSummary").textContent = t.summary || "Analysis complete.";
 
   // Risk grid
-  const riskGrid = document.getElementById("riskGrid");
-  if (riskGrid) {
-    riskGrid.innerHTML = (t.risks || []).map(risk => `
-      <div class="risk-item ${risk.risk ? "risk" : "safe"} flex items-start gap-3">
-        <div class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-          risk.risk ? "bg-red-900/40" : "bg-emerald-900/40"
-        }">
-          <i data-lucide="${risk.risk ? "x-circle" : "check-circle"}" class="w-4 h-4 ${
-            risk.risk ? "text-red-400" : "text-emerald-400"
-          }"></i>
+  const rg = document.getElementById("riskGrid");
+  if (rg) {
+    rg.innerHTML = (t.risks || []).map(r => `
+      <div class="risk-item ${r.risk ? "risk" : "safe"} flex items-start gap-2.5">
+        <div class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${r.risk ? "bg-red-900/40" : "bg-emerald-900/40"}">
+          <i data-lucide="${r.risk ? "x-circle" : "check-circle"}" class="w-4 h-4 ${r.risk ? "text-red-400" : "text-emerald-400"}"></i>
         </div>
         <div class="min-w-0">
-          <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">${risk.name}</p>
-          <p class="text-xs font-semibold ${risk.risk ? "text-red-400" : "text-emerald-400"} truncate">${risk.status}</p>
+          <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">${r.name}</p>
+          <p class="text-xs font-semibold ${r.risk ? "text-red-400" : "text-emerald-400"} truncate">${r.status}</p>
         </div>
-      </div>
-    `).join("");
+      </div>`).join("");
   }
 
   if (window.lucide?.createIcons) window.lucide.createIcons();
 }
 
 // ============================================================
-//  Chart.js — Volume & Price
+//  Chart.js — 7d Price + Volume
 // ============================================================
 function initChart(points) {
   if (!window.Chart) return;
   const canvas = document.getElementById("volumeChart");
   if (!canvas) return;
-
   if (currentChart) { currentChart.destroy(); currentChart = null; }
 
-  const ctx = canvas.getContext("2d");
-
+  const ctx    = canvas.getContext("2d");
   const labels  = points.map(p => p.label);
   const prices  = points.map(p => p.price);
   const volumes = points.map(p => p.volume);
 
   const priceGrad = ctx.createLinearGradient(0, 0, 0, 220);
-  priceGrad.addColorStop(0, "rgba(99,102,241,0.25)");
+  priceGrad.addColorStop(0, "rgba(99,102,241,0.28)");
   priceGrad.addColorStop(1, "rgba(99,102,241,0)");
 
   currentChart = new Chart(ctx, {
@@ -516,7 +474,7 @@ function initChart(points) {
           data: prices,
           borderColor: "rgb(99,102,241)",
           backgroundColor: priceGrad,
-          borderWidth: 2,
+          borderWidth: 2.5,
           tension: 0.4,
           yAxisID: "y",
           fill: true,
@@ -528,8 +486,8 @@ function initChart(points) {
           type: "bar",
           label: "Volume",
           data: volumes,
-          backgroundColor: "rgba(139,92,246,0.3)",
-          borderColor: "rgba(139,92,246,0.6)",
+          backgroundColor: "rgba(139,92,246,0.28)",
+          borderColor: "rgba(139,92,246,0.55)",
           borderWidth: 1,
           borderRadius: 4,
           yAxisID: "y1"
@@ -541,9 +499,7 @@ function initChart(points) {
       maintainAspectRatio: false,
       interaction: { mode: "index", intersect: false },
       plugins: {
-        legend: {
-          labels: { color: "rgba(156,163,175,0.8)", font: { size: 11 }, boxWidth: 12 }
-        },
+        legend: { labels: { color: "rgba(156,163,175,0.8)", font: { size: 11 }, boxWidth: 12 } },
         tooltip: {
           backgroundColor: "rgba(10,14,33,0.95)",
           borderColor: "rgba(99,102,241,0.3)",
@@ -551,227 +507,240 @@ function initChart(points) {
           titleColor: "#c7d2fe",
           bodyColor: "#9ca3af",
           padding: 10,
-          cornerRadius: 8
+          cornerRadius: 10
         }
       },
       scales: {
-        x: {
-          ticks: { color: "rgba(107,114,128,0.8)", font: { size: 10 } },
-          grid: { color: "rgba(30,41,59,0.5)", drawBorder: false }
-        },
-        y: {
-          ticks: { color: "rgba(107,114,128,0.8)", font: { size: 10 } },
-          grid: { color: "rgba(30,41,59,0.5)", drawBorder: false }
-        },
-        y1: {
-          position: "right",
-          ticks: { display: false },
-          grid: { display: false }
-        }
+        x:  { ticks: { color: "rgba(107,114,128,0.8)", font: { size: 10 } }, grid: { color: "rgba(30,41,59,0.5)" } },
+        y:  { ticks: { color: "rgba(107,114,128,0.8)", font: { size: 10 } }, grid: { color: "rgba(30,41,59,0.5)" } },
+        y1: { position: "right", ticks: { display: false }, grid: { display: false } }
       }
     }
   });
 }
 
 // ============================================================
-//  Bubble Map — Holder Distribution
+//  Bubble Map — iNSIGHTX-Style Packed Scatter
 // ============================================================
 function renderBubbleMap(t) {
-  const container = document.getElementById("bubbleMapContainer");
-  const canvas    = document.getElementById("bubbleMapCanvas");
-  const legend    = document.getElementById("bubbleLegend");
-  if (!container || !canvas) return;
-
-  // Cancel previous animation
   if (bubbleAnimFrame) { cancelAnimationFrame(bubbleAnimFrame); bubbleAnimFrame = null; }
 
-  const W = container.clientWidth || 600;
-  const H = container.clientHeight || 280;
+  const container  = document.getElementById("bubbleMapContainer");
+  const canvas     = document.getElementById("bubbleMapCanvas");
+  const listEl     = document.getElementById("holderList");
+  if (!container || !canvas) return;
+
+  // Measure real dimensions (container must be visible)
+  const W = container.clientWidth  || 400;
+  const H = container.clientHeight || 300;
   canvas.width  = W;
   canvas.height = H;
   const ctx = canvas.getContext("2d");
 
-  const top10  = Number(t.top10Pct)   || 30;
-  const devPct = Number(t.devPct)     || 3;
-  const comm   = Math.max(0, 100 - top10);
+  // ── Build holder distribution from API data ──────────────────
+  const top10 = Math.max(1, Math.min(100, Number(t.top10Pct) || 30));
+  const conc  = t.concentrationLabel || "Moderate";
+  const comm  = Math.max(0, 100 - top10);
 
-  // Build bubble data
-  const rawBubbles = [
-    { label: "Community",   pct: comm,          color: [99,102,241],   emoji: "👥" },
-    { label: "Whale #1",    pct: top10 * 0.40,  color: [239,68,68],    emoji: "🐋" },
-    { label: "Whales 2-5",  pct: top10 * 0.35,  color: [245,158,11],   emoji: "🐳" },
-    { label: "Whales 6-10", pct: top10 * 0.25,  color: [34,211,238],   emoji: "🐬" },
-    { label: "Dev Wallet",  pct: devPct,         color: [220,38,38],    emoji: "🔑" }
-  ].filter(b => b.pct > 0);
+  // Distribute top-10 holdings with realistic relative sizes
+  const top1Share = conc === "Extreme" ? 0.36 : conc === "Moderate" ? 0.27 : 0.21;
+  const rawWeights = [top1Share, 0.19, 0.13, 0.10, 0.09, 0.08, 0.06, 0.05, 0.04, 0.02];
+  const wSum = rawWeights.reduce((a, b) => a + b, 0);
+  const topShares = rawWeights.map(w => (w / wSum) * top10);
 
-  // Scale radii
-  const maxR = Math.min(W * 0.18, H * 0.38);
-  const minR = 16;
-  const maxPct = Math.max(...rawBubbles.map(b => b.pct));
+  // Color definitions per tier
+  const TIER_COLOR = {
+    dex:       [251, 191,  36],   // gold
+    whale:     [251, 146,  60],   // orange
+    top:       [ 99, 102, 241],   // indigo
+    mid:       [ 34, 211, 238],   // cyan
+    community: [ 60,  70,  95]    // dark slate (outline-only)
+  };
 
-  const bubbles = rawBubbles.map((b, i) => {
-    const r = minR + (Math.sqrt(b.pct / maxPct)) * (maxR - minR);
-    // Spread positions across canvas width
-    const cols = rawBubbles.length;
-    const sectionW = W / cols;
-    const x = sectionW * i + sectionW / 2 + (Math.random() - 0.5) * sectionW * 0.3;
-    const y = H / 2 + (Math.random() - 0.5) * H * 0.2;
-    return {
-      ...b, r, x, y,
-      vx: (Math.random() - 0.5) * 0.25,
-      vy: (Math.random() - 0.5) * 0.25,
-      phase: Math.random() * Math.PI * 2,
-      speed: 0.005 + Math.random() * 0.01
-    };
-  });
+  const TIER_LABELS = ["DEX / LP Pool", "Whale", "Whale", "Top Holder", "Top Holder",
+                       "Top Holder", "Top Holder", "Holder", "Holder", "Holder"];
+  const TIER_TYPES  = ["dex","whale","whale","top","top","top","top","mid","mid","mid"];
 
-  // Build legend
-  if (legend) {
-    legend.innerHTML = bubbles.map(b => `
-      <div class="bubble-legend-item">
-        <span class="bubble-legend-dot" style="background:rgb(${b.color.join(",")})"></span>
-        ${b.label} (${b.pct.toFixed(1)}%)
-      </div>
-    `).join("");
+  const holders = topShares.map((pct, i) => ({
+    rank: i + 1,
+    pct,
+    label:  TIER_LABELS[i],
+    type:   TIER_TYPES[i],
+    color:  TIER_COLOR[TIER_TYPES[i]],
+    filled: true
+  }));
+
+  // Community bubbles (outlined, scattered)
+  let commLeft = comm;
+  const numComm = 24;
+  const commSlice = comm / numComm;
+  for (let i = 0; i < numComm && commLeft > 0.01; i++) {
+    const pct = commSlice * (0.55 + Math.random() * 0.9);
+    const actual = Math.min(pct, commLeft);
+    holders.push({ rank: 11 + i, pct: actual, label: "Community", type: "community", color: TIER_COLOR.community, filled: false });
+    commLeft -= actual;
   }
 
-  // Tooltip on hover
+  // ── Scale radii ──────────────────────────────────────────────
+  const maxPct = Math.max(...holders.map(h => h.pct));
+  const maxR = Math.min(W * 0.095, H * 0.19, 34);
+  const minR = 3.5;
+  holders.forEach(h => {
+    h.r    = minR + Math.sqrt(h.pct / maxPct) * (maxR - minR);
+    h.phase = Math.random() * Math.PI * 2;
+    h.speed = 0.004 + Math.random() * 0.006;
+    h.amp   = 1.5 + Math.random() * 2.5;
+  });
+
+  // ── Pack bubbles (collision avoidance, large-first) ─────────
+  const PAD = 2;
+  const placed = [];
+  [...holders].sort((a, b) => b.r - a.r).forEach(b => {
+    let ok = false;
+    for (let try_ = 0; try_ < 500; try_++) {
+      const x = b.r + PAD + Math.random() * (W - 2 * b.r - 2 * PAD);
+      const y = b.r + PAD + Math.random() * (H - 2 * b.r - 2 * PAD);
+      const collides = placed.some(p => {
+        const dx = x - p.ox, dy = y - p.oy;
+        return dx * dx + dy * dy < (p.r + b.r + PAD) ** 2;
+      });
+      if (!collides) { b.ox = x; b.oy = y; ok = true; break; }
+    }
+    if (!ok) { b.ox = b.r + Math.random() * Math.max(1, W - 2 * b.r); b.oy = b.r + Math.random() * Math.max(1, H - 2 * b.r); }
+    b.cx = b.ox; b.cy = b.oy;
+    placed.push(b);
+  });
+
+  // ── Populate right holder list ───────────────────────────────
+  if (listEl) {
+    listEl.innerHTML =
+      `<div class="text-[10px] text-gray-600 uppercase tracking-wider px-2 pb-1.5 border-b border-gray-800/60 mb-1 font-semibold shrink-0">
+         Top Holders
+       </div>` +
+      holders.slice(0, 15).map(h => {
+        const [r, g, bv] = h.color;
+        return `
+        <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-gray-800/50 transition-colors cursor-default text-[11px] shrink-0">
+          <span class="text-gray-700 w-4 text-right font-mono text-[10px] shrink-0">#${h.rank}</span>
+          <span class="w-2 h-2 rounded-full shrink-0 border" style="background:rgba(${r},${g},${bv},${h.filled ? 0.8 : 0.25});border-color:rgba(${r},${g},${bv},0.6)"></span>
+          <span class="flex-1 text-gray-400 truncate">${h.label}</span>
+          <span class="font-bold text-gray-200 shrink-0 font-mono text-[10px]">${h.pct.toFixed(2)}%</span>
+        </div>`;
+      }).join("") +
+      `<div class="mt-2 px-2 text-[10px] text-gray-700 italic leading-relaxed">
+         Est. distribution from on-chain metrics
+       </div>`;
+  }
+
+  // ── Tooltip ─────────────────────────────────────────────────
   const tooltip = document.getElementById("bubbleTooltip");
-  canvas.addEventListener("mousemove", e => {
+  const onMove = e => {
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
-    let hit = null;
-    for (const b of bubbles) {
-      const dx = mx - b.x, dy = my - b.y;
-      if (Math.sqrt(dx*dx + dy*dy) < b.r) { hit = b; break; }
-    }
+    const hit = holders.find(h => {
+      const dx = mx - h.cx, dy = my - h.cy;
+      return dx * dx + dy * dy < h.r * h.r;
+    });
     if (hit && tooltip) {
-      tooltip.innerHTML = `<strong class="text-white">${hit.emoji} ${hit.label}</strong><br><span class="text-gray-400">${hit.pct.toFixed(2)}% of supply</span>`;
-      tooltip.style.left = `${mx + 12}px`;
-      tooltip.style.top  = `${my - 10}px`;
+      tooltip.innerHTML = `<strong class="text-gray-100">#${hit.rank} ${hit.label}</strong><br><span class="text-gray-400">${hit.pct.toFixed(3)}% of supply</span>`;
+      tooltip.style.left = `${Math.min(mx + 14, W - 160)}px`;
+      tooltip.style.top  = `${Math.max(4, my - 48)}px`;
       tooltip.classList.remove("hidden");
-    } else if (tooltip) {
-      tooltip.classList.add("hidden");
+    } else {
+      tooltip?.classList.add("hidden");
     }
-  });
-  canvas.addEventListener("mouseleave", () => tooltip?.classList.add("hidden"));
+  };
+  // Remove old listeners before adding new ones
+  const newCanvas = canvas.cloneNode(true);
+  canvas.parentNode.replaceChild(newCanvas, canvas);
+  newCanvas.addEventListener("mousemove", onMove);
+  newCanvas.addEventListener("mouseleave", () => tooltip?.classList.add("hidden"));
 
-  let frame = 0;
+  // Re-get context on the fresh canvas
+  const ctx2 = newCanvas.getContext("2d");
 
-  function drawBubbles() {
-    ctx.clearRect(0, 0, W, H);
-    frame++;
+  // ── Draw loop ────────────────────────────────────────────────
+  function draw() {
+    ctx2.clearRect(0, 0, W, H);
 
     // Subtle grid
-    ctx.strokeStyle = "rgba(99,102,241,0.04)";
-    ctx.lineWidth = 1;
-    for (let gx = 0; gx < W; gx += 60) {
-      ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke();
-    }
-    for (let gy = 0; gy < H; gy += 60) {
-      ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
-    }
+    ctx2.strokeStyle = "rgba(99,102,241,0.04)";
+    ctx2.lineWidth = 1;
+    for (let gx = 0; gx <= W; gx += 48) { ctx2.beginPath(); ctx2.moveTo(gx, 0); ctx2.lineTo(gx, H); ctx2.stroke(); }
+    for (let gy = 0; gy <= H; gy += 48) { ctx2.beginPath(); ctx2.moveTo(0, gy); ctx2.lineTo(W, gy); ctx2.stroke(); }
 
-    // Draw bubbles
-    bubbles.forEach(b => {
-      // Float animation
-      b.phase += b.speed;
-      const floatY = Math.sin(b.phase) * 6;
-      const floatX = Math.cos(b.phase * 0.7) * 3;
+    holders.forEach(h => {
+      h.phase += h.speed;
+      h.cx = h.ox + Math.cos(h.phase * 0.71) * h.amp;
+      h.cy = h.oy + Math.sin(h.phase)         * h.amp;
 
-      const cx = b.x + floatX;
-      const cy = b.y + floatY;
+      const [r, g, bv] = h.color;
 
-      // Glow
-      const glowR = b.r * 1.5;
-      const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
-      glow.addColorStop(0, `rgba(${b.color.join(",")}, 0.15)`);
-      glow.addColorStop(1, "transparent");
-      ctx.beginPath();
-      ctx.arc(cx, cy, glowR, 0, Math.PI * 2);
-      ctx.fillStyle = glow;
-      ctx.fill();
-
-      // Main bubble gradient
-      const grad = ctx.createRadialGradient(cx - b.r * 0.25, cy - b.r * 0.25, 0, cx, cy, b.r);
-      grad.addColorStop(0, `rgba(${b.color.join(",")}, 0.9)`);
-      grad.addColorStop(0.7, `rgba(${b.color.join(",")}, 0.6)`);
-      grad.addColorStop(1, `rgba(${b.color.join(",")}, 0.3)`);
-
-      ctx.beginPath();
-      ctx.arc(cx, cy, b.r, 0, Math.PI * 2);
-      ctx.fillStyle = grad;
-      ctx.fill();
-
-      // Border
-      ctx.strokeStyle = `rgba(${b.color.join(",")}, 0.5)`;
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-
-      // Highlight (top-left sheen)
-      const shine = ctx.createRadialGradient(
-        cx - b.r * 0.35, cy - b.r * 0.35, 0,
-        cx - b.r * 0.1, cy - b.r * 0.1, b.r * 0.6
-      );
-      shine.addColorStop(0, "rgba(255,255,255,0.2)");
-      shine.addColorStop(1, "transparent");
-      ctx.beginPath();
-      ctx.arc(cx, cy, b.r, 0, Math.PI * 2);
-      ctx.fillStyle = shine;
-      ctx.fill();
-
-      // Label text
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-
-      if (b.r > 30) {
-        // Emoji
-        ctx.font = `${Math.max(12, b.r * 0.38)}px serif`;
-        ctx.fillStyle = "white";
-        ctx.globalAlpha = 0.9;
-        ctx.fillText(b.emoji, cx, cy - b.r * 0.18);
-        ctx.globalAlpha = 1;
-
-        // Percentage text
-        ctx.font = `bold ${Math.max(9, b.r * 0.22)}px 'JetBrains Mono', monospace`;
-        ctx.fillStyle = "rgba(255,255,255,0.95)";
-        ctx.fillText(`${b.pct.toFixed(1)}%`, cx, cy + b.r * 0.22);
+      if (!h.filled) {
+        // Community: outline only (iNSIGHTX style)
+        ctx2.beginPath();
+        ctx2.arc(h.cx, h.cy, h.r, 0, Math.PI * 2);
+        ctx2.strokeStyle = `rgba(${r},${g},${bv},0.3)`;
+        ctx2.lineWidth = 1;
+        ctx2.stroke();
+        ctx2.fillStyle = `rgba(${r},${g},${bv},0.04)`;
+        ctx2.fill();
       } else {
-        ctx.font = `bold ${Math.max(8, b.r * 0.35)}px 'JetBrains Mono', monospace`;
-        ctx.fillStyle = "rgba(255,255,255,0.9)";
-        ctx.fillText(`${b.pct.toFixed(0)}%`, cx, cy);
+        // Top holders: glow + filled gradient + shine
+        // Outer glow halo
+        const halo = ctx2.createRadialGradient(h.cx, h.cy, 0, h.cx, h.cy, h.r * 2.2);
+        halo.addColorStop(0, `rgba(${r},${g},${bv},0.14)`);
+        halo.addColorStop(1, "transparent");
+        ctx2.beginPath(); ctx2.arc(h.cx, h.cy, h.r * 2.2, 0, Math.PI * 2);
+        ctx2.fillStyle = halo; ctx2.fill();
+
+        // Main fill
+        const fill = ctx2.createRadialGradient(
+          h.cx - h.r * 0.28, h.cy - h.r * 0.28, 0,
+          h.cx, h.cy, h.r
+        );
+        fill.addColorStop(0, `rgba(${r},${g},${bv},0.92)`);
+        fill.addColorStop(0.65, `rgba(${r},${g},${bv},0.68)`);
+        fill.addColorStop(1, `rgba(${r},${g},${bv},0.38)`);
+        ctx2.beginPath(); ctx2.arc(h.cx, h.cy, h.r, 0, Math.PI * 2);
+        ctx2.fillStyle = fill; ctx2.fill();
+
+        // Border
+        ctx2.strokeStyle = `rgba(${r},${g},${bv},0.65)`;
+        ctx2.lineWidth = 1.5; ctx2.stroke();
+
+        // Sheen
+        const shine = ctx2.createRadialGradient(
+          h.cx - h.r * 0.32, h.cy - h.r * 0.38, 0,
+          h.cx - h.r * 0.08, h.cy - h.r * 0.08, h.r * 0.75
+        );
+        shine.addColorStop(0, "rgba(255,255,255,0.25)");
+        shine.addColorStop(1, "transparent");
+        ctx2.beginPath(); ctx2.arc(h.cx, h.cy, h.r, 0, Math.PI * 2);
+        ctx2.fillStyle = shine; ctx2.fill();
+
+        // Percentage label inside bubble (if big enough)
+        if (h.r >= 15) {
+          ctx2.textAlign = "center";
+          ctx2.textBaseline = "middle";
+          ctx2.font = `bold ${Math.max(8, Math.floor(h.r * 0.42))}px 'JetBrains Mono',monospace`;
+          ctx2.fillStyle = "rgba(255,255,255,0.95)";
+          ctx2.fillText(`${h.pct.toFixed(1)}%`, h.cx, h.cy);
+        }
       }
     });
 
-    // Connecting lines (subtle)
-    ctx.globalAlpha = 0.06;
-    ctx.strokeStyle = "#818cf8";
-    ctx.lineWidth = 1;
-    for (let i = 0; i < bubbles.length - 1; i++) {
-      const a = bubbles[i], b = bubbles[i + 1];
-      const ax = a.x + Math.cos(a.phase * 0.7) * 3;
-      const ay = a.y + Math.sin(a.phase) * 6;
-      const bx = b.x + Math.cos(b.phase * 0.7) * 3;
-      const by = b.y + Math.sin(b.phase) * 6;
-      ctx.beginPath();
-      ctx.moveTo(ax, ay);
-      ctx.lineTo(bx, by);
-      ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-
-    bubbleAnimFrame = requestAnimationFrame(drawBubbles);
+    bubbleAnimFrame = requestAnimationFrame(draw);
   }
-
-  drawBubbles();
+  draw();
 }
 
 // ============================================================
-//  AI Analysis (auto-triggered after main analysis)
+//  AI Analysis — race-condition-safe
 // ============================================================
-async function runAIAnalysis() {
-  if (!currentTokenData) return;
+async function runAIAnalysis(capturedId) {
+  if (!currentTokenData || capturedId !== analysisId) return;
 
   hide("aiAnalysisError");
   show("aiLoadingIndicator");
@@ -780,280 +749,221 @@ async function runAIAnalysis() {
     const text    = `${currentTokenData.name} ${currentTokenData.symbol} solana crypto price sentiment`;
     const summary = currentTokenData.summaryForAI;
 
-    const [sentimentRes, rugRes] = await Promise.all([
+    const [sentRes, rugRes] = await Promise.all([
       postJSON("/api/sentiment", { text }),
       postJSON("/api/rugrisk",   { summary })
     ]);
 
+    // Always check ID before touching the DOM
+    if (capturedId !== analysisId) return;
+
     // Sentiment
-    if (sentimentRes?.ok) {
-      const data = normalizeSentimentFromPreds(sentimentRes.preds, currentTokenData.name);
-      displaySentimentResults(data);
-      hide("sentimentPlaceholder");
-      show("sentimentResult");
-    } else {
-      // Show fallback
-      const fallback = generateFallbackSentiment(currentTokenData);
-      displaySentimentResults(fallback);
-      hide("sentimentPlaceholder");
-      show("sentimentResult");
-    }
+    const sentData = sentRes?.ok
+      ? normalizeSentimentFromPreds(sentRes.preds, currentTokenData.name)
+      : generateFallbackSentiment(currentTokenData);
+    displaySentimentResults(sentData);
+    hide("sentimentPlaceholder"); show("sentimentResult");
 
-    // Pattern Recognition from chart data
-    const patternData = heuristicPatternFromChart(currentTokenData?.chart?.points || []);
-    displayPatternResults(patternData);
-    hide("patternPlaceholder");
-    show("patternResult");
+    if (capturedId !== analysisId) return;
 
-    // Rug Pull Risk
-    if (rugRes?.ok) {
-      const riskData = normalizeRugRiskFromZeroShot(rugRes.data);
-      displayRugPullResults(riskData);
-      hide("rugPullPlaceholder");
-      show("rugPullResult");
-    } else {
-      const fallbackRisk = generateRugRiskFromTokenData(currentTokenData);
-      displayRugPullResults(fallbackRisk);
-      hide("rugPullPlaceholder");
-      show("rugPullResult");
-    }
+    // Pattern from chart
+    const patData = heuristicPatternFromChart(currentTokenData?.chart?.points || []);
+    displayPatternResults(patData);
+    hide("patternPlaceholder"); show("patternResult");
+
+    if (capturedId !== analysisId) return;
+
+    // Rug risk
+    const rugData = rugRes?.ok
+      ? normalizeRugRiskFromZeroShot(rugRes.data)
+      : generateRugRiskFromTokenData(currentTokenData);
+    displayRugPullResults(rugData);
+    hide("rugPullPlaceholder"); show("rugPullResult");
 
     if (window.lucide?.createIcons) window.lucide.createIcons();
 
   } catch (e) {
+    if (capturedId !== analysisId) return;
     console.warn("AI analysis error:", e);
-    // Show best-effort fallbacks rather than erroring
+    // Graceful fallback — always show something rather than blank panels
     try {
-      const fallbackSentiment = generateFallbackSentiment(currentTokenData);
-      displaySentimentResults(fallbackSentiment);
+      displaySentimentResults(generateFallbackSentiment(currentTokenData));
       hide("sentimentPlaceholder"); show("sentimentResult");
 
-      const patternData = heuristicPatternFromChart(currentTokenData?.chart?.points || []);
-      displayPatternResults(patternData);
+      displayPatternResults(heuristicPatternFromChart(currentTokenData?.chart?.points || []));
       hide("patternPlaceholder"); show("patternResult");
 
-      const fallbackRisk = generateRugRiskFromTokenData(currentTokenData);
-      displayRugPullResults(fallbackRisk);
+      displayRugPullResults(generateRugRiskFromTokenData(currentTokenData));
       hide("rugPullPlaceholder"); show("rugPullResult");
     } catch {}
   } finally {
-    hide("aiLoadingIndicator");
+    if (capturedId === analysisId) hide("aiLoadingIndicator");
   }
 }
 
-// ============================================================
-//  AI Analysis Helpers
-// ============================================================
+// ── API helpers ──────────────────────────────────────────────
 async function postJSON(url, body) {
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
+  const r    = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const data = await r.json().catch(() => ({ ok: false }));
   if (typeof data.ok !== "boolean") data.ok = r.ok;
   return data;
 }
 
+// ── Sentiment helpers ────────────────────────────────────────
 function normalizeSentimentFromPreds(preds = [], tokenName) {
   const pos = preds.find(p => /positive|bullish/i.test(p.label))?.score || 0;
-  const neu = preds.find(p => /neutral/i.test(p.label))?.score || 0;
+  const neu = preds.find(p => /neutral/i.test(p.label))?.score          || 0;
   const neg = preds.find(p => /negative|bearish/i.test(p.label))?.score || 0;
-
   const positive = Math.round(pos * 100);
   const neutral  = Math.round(neu * 100);
   const negative = Math.max(0, 100 - positive - neutral);
   const score    = Math.max(0, Math.min(100, Math.round(((pos - neg) + 1) * 50)));
-
   return {
     positive, neutral, negative, score,
-    summary: positive > 65 ? `Strong bullish community signal for ${tokenName}.`
-      : positive > 40 ? `Mixed sentiment — watch for breakout or breakdown.`
-      : `Negative sentiment detected — exercise caution.`,
+    summary: positive > 65 ? `Strong bullish signal for ${tokenName}.`
+      : positive > 40 ? `Mixed community sentiment.`
+      : `Bearish signals detected — caution advised.`,
     mentions: [
       { text: "On-chain activity looks healthy", sentiment: "positive" },
       { text: "Monitor top holder movements", sentiment: "neutral" },
-      { text: "Low LP lock is a concern", sentiment: "negative" }
+      { text: "Low LP lock is a concern",       sentiment: "negative" }
     ]
   };
 }
 
 function generateFallbackSentiment(t) {
-  const score = t.scores?.overall ?? 50;
-  const positive = Math.round(score * 0.6 + Math.random() * 10);
-  const negative = Math.round((100 - score) * 0.5 + Math.random() * 8);
+  const score    = t.scores?.overall ?? 50;
+  const positive = Math.round(score * 0.55 + Math.random() * 12);
+  const negative = Math.round((100 - score) * 0.45 + Math.random() * 8);
   const neutral  = Math.max(0, 100 - positive - negative);
   return {
-    positive, neutral, negative, score: Math.min(100, Math.max(0, score + Math.round(Math.random() * 10 - 5))),
-    summary: `Estimated from on-chain metrics for ${t.name || "this token"}. Score reflects holder distribution and liquidity health.`,
+    positive, neutral, negative,
+    score: Math.min(100, Math.max(0, score + Math.round(Math.random() * 8 - 4))),
+    summary: `Estimated from on-chain data for ${t.name || "this token"}. Reflects holder distribution & liquidity health.`,
     mentions: [
-      { text: `${t.name} has ${Number(t.holders || 0).toLocaleString()} holders`, sentiment: "positive" },
-      { text: `Top 10 hold ${t.top10Pct || "?"}% — watch concentration`, sentiment: "neutral" },
-      { text: t.lpLockedPct > 50 ? `LP ${t.lpLockedPct}% locked — safer` : `Low LP lock (${t.lpLockedPct || 0}%) — risky`, sentiment: t.lpLockedPct > 50 ? "positive" : "negative" }
+      { text: `${Number(t.holders || 0).toLocaleString()} total holders`,              sentiment: "positive" },
+      { text: `Top 10 hold ${t.top10Pct || "?"}% — watch concentration`,              sentiment: "neutral"  },
+      { text: t.lpLockedPct > 50 ? `LP ${t.lpLockedPct}% locked` : `Low LP lock (${t.lpLockedPct || 0}%)`, sentiment: t.lpLockedPct > 50 ? "positive" : "negative" }
     ]
   };
 }
 
-function generateRugRiskFromTokenData(t) {
-  // Derive score from actual data
-  let score = 20;
-  if (Number(t.lpLockedPct) < 30) score += 30;
-  else if (Number(t.lpLockedPct) < 60) score += 15;
-  if (t.concentrationLabel === "Extreme") score += 25;
-  else if (t.concentrationLabel === "Moderate") score += 10;
-  if (t.risks?.find(r => r.name === "Mint Authority" && r.risk)) score += 15;
-  if (t.risks?.find(r => r.name === "Freeze Authority" && r.risk)) score += 10;
-  score = Math.min(95, Math.max(5, score));
-  return generateRugPullDataFromScore(score);
-}
-
-function displaySentimentResults(data) {
-  document.getElementById("positiveSentiment").textContent = `${data.positive}%`;
-  document.getElementById("neutralSentiment").textContent  = `${data.neutral}%`;
-  document.getElementById("negativeSentiment").textContent = `${data.negative}%`;
-  document.getElementById("sentimentScore").textContent    = `${data.score}/100`;
-
-  // Move cursor on gradient bar
+function displaySentimentResults(d) {
+  document.getElementById("positiveSentiment").textContent = `${d.positive}%`;
+  document.getElementById("neutralSentiment").textContent  = `${d.neutral}%`;
+  document.getElementById("negativeSentiment").textContent = `${d.negative}%`;
+  document.getElementById("sentimentScore").textContent    = `${d.score}/100`;
   const cursor = document.getElementById("sentimentCursor");
-  if (cursor) cursor.style.left = `${data.score}%`;
-
-  document.getElementById("sentimentSummary").textContent = data.summary;
-
-  const mentionsEl = document.getElementById("sentimentMentions");
-  if (mentionsEl) {
-    mentionsEl.innerHTML = data.mentions.map(m => `
+  if (cursor) cursor.style.left = `${d.score}%`;
+  document.getElementById("sentimentSummary").textContent  = d.summary;
+  const me = document.getElementById("sentimentMentions");
+  if (me) {
+    me.innerHTML = d.mentions.map(m => `
       <div class="flex items-start gap-1.5 py-0.5">
-        <span class="mt-0.5 w-1.5 h-1.5 rounded-full shrink-0 ${
-          m.sentiment === "positive" ? "bg-emerald-400" :
-          m.sentiment === "negative" ? "bg-red-400" : "bg-gray-600"
-        }"></span>
+        <span class="mt-0.5 w-1.5 h-1.5 rounded-full shrink-0 ${m.sentiment === "positive" ? "bg-emerald-400" : m.sentiment === "negative" ? "bg-red-400" : "bg-gray-600"}"></span>
         <p class="text-gray-500 leading-snug">${m.text}</p>
-      </div>
-    `).join("");
+      </div>`).join("");
   }
 }
 
+// ── Pattern helpers ──────────────────────────────────────────
 function heuristicPatternFromChart(points) {
-  if (!points.length) {
-    return {
-      name: "No Data", description: "No price history available.",
-      confidence: 0, trend: "Unknown",
-      support: "--", resistance: "--",
-      prediction: "Try again shortly."
-    };
-  }
-
-  const first = points[0].price;
-  const last  = points[points.length - 1].price;
-  const pct   = first ? ((last - first) / first) * 100 : 0;
-  const trend = pct > 5 ? "Bullish" : pct < -5 ? "Bearish" : "Sideways";
-  const name  = trend === "Bullish" ? "Uptrend" : trend === "Bearish" ? "Downtrend" : "Consolidation";
-  const confidence = Math.min(92, Math.max(40, Math.round(Math.abs(pct) * 5 + 40)));
-
+  if (!points.length) return { name: "No Data", description: "No price history.", confidence: 0, trend: "Unknown", support: "--", resistance: "--", prediction: "Retry shortly." };
   const prices = points.map(p => p.price).filter(n => isFinite(n) && n > 0);
+  const first  = prices[0], last = prices[prices.length - 1];
+  const pct    = first ? ((last - first) / first) * 100 : 0;
+  const trend  = pct > 5 ? "Bullish" : pct < -5 ? "Bearish" : "Sideways";
+  const name   = trend === "Bullish" ? "Uptrend" : trend === "Bearish" ? "Downtrend" : "Consolidation";
+  const confidence = Math.min(92, Math.max(40, Math.round(Math.abs(pct) * 4.5 + 42)));
   const support    = prices.length ? Math.min(...prices) : 0;
   const resistance = prices.length ? Math.max(...prices) : 0;
-
   return {
     name,
-    description: `Based on 7-day OHLCV data. ${Math.abs(pct).toFixed(1)}% ${pct >= 0 ? "gain" : "loss"} over the period.`,
-    confidence,
-    trend,
+    description: `Based on 7-day OHLCV. ${Math.abs(pct).toFixed(1)}% ${pct >= 0 ? "gain" : "loss"} over the period.`,
+    confidence, trend,
     support:    support.toPrecision(6),
     resistance: resistance.toPrecision(6),
-    prediction: trend === "Bullish" ? "Momentum positive — look for pullbacks to accumulate."
-      : trend === "Bearish" ? "Bearish momentum — avoid chasing, wait for reversal signal."
-      : "Range-bound — wait for confirmed breakout before entering."
+    prediction: trend === "Bullish" ? "Positive momentum — look for pullbacks to accumulate."
+      : trend === "Bearish" ? "Bearish — avoid chasing; wait for reversal confirmation."
+      : "Range-bound — wait for a confirmed breakout before entering."
   };
 }
 
-function displayPatternResults(data) {
-  document.getElementById("patternName").textContent        = data.name;
-  document.getElementById("patternDescription").textContent = data.description;
-  document.getElementById("patternConfidence").textContent  = `${data.confidence}%`;
-  document.getElementById("patternPrediction").textContent  = data.prediction;
-
+function displayPatternResults(d) {
+  document.getElementById("patternName").textContent        = d.name;
+  document.getElementById("patternDescription").textContent = d.description;
+  document.getElementById("patternConfidence").textContent  = `${d.confidence}%`;
+  document.getElementById("patternPrediction").textContent  = d.prediction;
   const tr = document.getElementById("patternTrend");
   if (tr) {
-    tr.textContent = data.trend;
-    tr.className = `px-2 py-0.5 rounded-full text-[10px] font-medium ${
-      data.trend === "Bullish"  ? "bg-emerald-900/50 text-emerald-400 border border-emerald-500/20" :
-      data.trend === "Bearish"  ? "bg-red-900/50 text-red-400 border border-red-500/20" :
+    tr.textContent = d.trend;
+    tr.className   = `px-2 py-0.5 rounded-full text-[10px] font-medium border ${
+      d.trend === "Bullish" ? "bg-emerald-900/50 text-emerald-400 border-emerald-500/20" :
+      d.trend === "Bearish" ? "bg-red-900/50 text-red-400 border-red-500/20" :
       "bg-gray-800 text-gray-400 border border-gray-700"
     }`;
   }
-
-  document.getElementById("supportLevel").textContent    = `$${data.support}`;
-  document.getElementById("resistanceLevel").textContent = `$${data.resistance}`;
+  document.getElementById("supportLevel").textContent    = `$${d.support}`;
+  document.getElementById("resistanceLevel").textContent = `$${d.resistance}`;
 }
 
-function normalizeRugRiskFromZeroShot(zeroShot) {
-  const labels = zeroShot?.labels || [];
-  const scores = zeroShot?.scores || [];
-  const rugIdx = labels.findIndex(l => /rug|scam/i.test(String(l)));
-  const rugProb = rugIdx >= 0 ? scores[rugIdx] : 0.25;
-  return generateRugPullDataFromScore(Math.round(rugProb * 100));
+// ── Rug risk helpers ─────────────────────────────────────────
+function normalizeRugRiskFromZeroShot(z) {
+  const labels = z?.labels || [], scores = z?.scores || [];
+  const idx    = labels.findIndex(l => /rug|scam/i.test(String(l)));
+  return generateRugPullDataFromScore(Math.round((idx >= 0 ? scores[idx] : 0.25) * 100));
+}
+
+function generateRugRiskFromTokenData(t) {
+  let score = 18;
+  if (Number(t.lpLockedPct) < 30) score += 30;
+  else if (Number(t.lpLockedPct) < 60) score += 14;
+  if (t.concentrationLabel === "Extreme") score += 25;
+  else if (t.concentrationLabel === "Moderate") score += 10;
+  if (t.risks?.find(r => r.name === "Mint Authority"  && r.risk)) score += 15;
+  if (t.risks?.find(r => r.name === "Freeze Authority" && r.risk)) score += 10;
+  return generateRugPullDataFromScore(Math.min(95, Math.max(5, score)));
 }
 
 function generateRugPullDataFromScore(score) {
-  const riskLevel = score < 30 ? "Low" : score < 65 ? "Medium" : "High";
-  const indicators = [
-    { name: "Liquidity Lock",  status: score < 35 ? "Locked ✅"  : score < 65 ? "Partial ⚠️" : "Unlocked ❌", risk: score > 55 },
-    { name: "Top Holders",     status: score < 30 ? "Healthy ✅" : score < 65 ? "Moderate ⚠️" : "Extreme ❌",  risk: score > 65 },
-    { name: "Authorities",     status: score < 35 ? "Revoked ✅" : score < 65 ? "Mixed ⚠️"    : "Active ❌",   risk: score > 55 },
-    { name: "Volume Pattern",  status: score > 75 ? "Artificial ❌" : score > 50 ? "Suspicious ⚠️" : "Organic ✅", risk: score > 50 }
-  ];
-  const flags =
-    riskLevel === "High"   ? ["Liquidity exposure", "Concentration risk", "Suspicious volume"] :
-    riskLevel === "Medium" ? ["Monitor LP lock", "Use tight stops"] :
-    ["Lower risk profile"];
-  return { score, riskLevel, indicators, flags };
+  const level = score < 30 ? "Low" : score < 65 ? "Medium" : "High";
+  return {
+    score, riskLevel: level,
+    indicators: [
+      { name: "Liquidity Lock",  status: score < 35 ? "Locked ✅"  : score < 65 ? "Partial ⚠️" : "Unlocked ❌", risk: score > 55 },
+      { name: "Top Holders",     status: score < 30 ? "Healthy ✅" : score < 65 ? "Moderate ⚠️" : "Extreme ❌",  risk: score > 65 },
+      { name: "Authorities",     status: score < 35 ? "Revoked ✅" : score < 65 ? "Mixed ⚠️"    : "Active ❌",   risk: score > 55 },
+      { name: "Volume Pattern",  status: score > 75 ? "Artificial ❌" : score > 50 ? "Suspicious ⚠️" : "Organic ✅", risk: score > 50 }
+    ],
+    flags: level === "High" ? ["Liquidity exposure", "Concentration risk", "Suspicious volume"]
+         : level === "Medium" ? ["Monitor LP lock", "Use tight stops"]
+         : ["Lower risk profile"]
+  };
 }
 
-function displayRugPullResults(data) {
-  const scoreEl = document.getElementById("rugPullScore");
-  if (scoreEl) {
-    scoreEl.textContent = data.score;
-    scoreEl.className = `text-6xl font-black mb-0.5 ${
-      data.riskLevel === "High" ? "text-red-400 score-glow-red" :
-      data.riskLevel === "Medium" ? "text-yellow-400 score-glow-yellow" :
-      "text-emerald-400 score-glow-green"
-    }`;
+function displayRugPullResults(d) {
+  const se = document.getElementById("rugPullScore");
+  if (se) {
+    se.textContent = d.score;
+    se.className   = `text-6xl font-black mb-0.5 ${d.riskLevel === "High" ? "text-red-400 score-glow-red" : d.riskLevel === "Medium" ? "text-yellow-400 score-glow-yellow" : "text-emerald-400 score-glow-green"}`;
   }
-
-  const indEl = document.getElementById("rugPullIndicators");
-  if (indEl) {
-    indEl.innerHTML = data.indicators.map(ind => `
+  const ie = document.getElementById("rugPullIndicators");
+  if (ie) {
+    ie.innerHTML = d.indicators.map(i => `
       <div class="flex items-center justify-between bg-gray-900/50 border border-gray-800 rounded-xl px-3 py-2">
-        <span class="text-[10px] text-gray-500">${ind.name}</span>
-        <span class="text-[10px] font-semibold ${ind.risk ? "text-red-400" : "text-emerald-400"}">${ind.status}</span>
-      </div>
-    `).join("");
+        <span class="text-[10px] text-gray-500">${i.name}</span>
+        <span class="text-[10px] font-semibold ${i.risk ? "text-red-400" : "text-emerald-400"}">${i.status}</span>
+      </div>`).join("");
   }
+  const fe = document.getElementById("mlFlags");
+  if (fe) fe.innerHTML = d.flags.map(f => `<span class="px-2 py-0.5 bg-gray-800 border border-gray-700 text-gray-400 rounded-full text-[10px]">${f}</span>`).join("");
 
-  const flagsEl = document.getElementById("mlFlags");
-  if (flagsEl) {
-    flagsEl.innerHTML = data.flags.map(f => `
-      <span class="px-2 py-0.5 bg-gray-800 border border-gray-700 text-gray-400 rounded-full text-[10px]">${f}</span>
-    `).join("");
-  }
-
-  const verdictEl = document.getElementById("rugPullVerdict");
-  const boxEl     = document.getElementById("rugPullVerdictBox");
-  if (verdictEl && boxEl) {
-    if (data.riskLevel === "High") {
-      verdictEl.textContent = "⚠️ HIGH RISK: Multiple rug-like signals detected. Avoid large positions.";
-      boxEl.className = "p-3 rounded-xl border bg-red-900/15 border-red-500/25";
-      verdictEl.className = "text-xs font-semibold text-center text-red-400";
-    } else if (data.riskLevel === "Medium") {
-      verdictEl.textContent = "⚡ MEDIUM RISK: Mixed signals — trade small, use tight stops.";
-      boxEl.className = "p-3 rounded-xl border bg-yellow-900/15 border-yellow-500/25";
-      verdictEl.className = "text-xs font-semibold text-center text-yellow-400";
-    } else {
-      verdictEl.textContent = "✅ LOWER RISK: Fewer rug signals detected. Still DYOR.";
-      boxEl.className = "p-3 rounded-xl border bg-emerald-900/15 border-emerald-500/25";
-      verdictEl.className = "text-xs font-semibold text-center text-emerald-400";
-    }
+  const ve = document.getElementById("rugPullVerdict");
+  const be = document.getElementById("rugPullVerdictBox");
+  if (ve && be) {
+    if (d.riskLevel === "High")   { ve.textContent = "⚠️ HIGH RISK: Multiple rug-like signals. Avoid large positions."; be.className = "p-3 rounded-xl border bg-red-900/15 border-red-500/25"; ve.className = "text-xs font-semibold text-center text-red-400"; }
+    else if (d.riskLevel === "Medium") { ve.textContent = "⚡ MEDIUM RISK: Mixed signals — trade small, use tight stops."; be.className = "p-3 rounded-xl border bg-yellow-900/15 border-yellow-500/25"; ve.className = "text-xs font-semibold text-center text-yellow-400"; }
+    else                          { ve.textContent = "✅ LOWER RISK: Fewer rug signals detected. Still DYOR."; be.className = "p-3 rounded-xl border bg-emerald-900/15 border-emerald-500/25"; ve.className = "text-xs font-semibold text-center text-emerald-400"; }
   }
 }
 
@@ -1061,13 +971,14 @@ function displayRugPullResults(data) {
 //  Reset
 // ============================================================
 function resetAnalysis() {
+  analysisId++;  // Invalidate any in-flight analysis
   currentTokenData = null;
-
-  if (currentChart)     { currentChart.destroy(); currentChart = null; }
-  if (bubbleAnimFrame)  { cancelAnimationFrame(bubbleAnimFrame); bubbleAnimFrame = null; }
+  if (currentChart)    { currentChart.destroy(); currentChart = null; }
+  if (bubbleAnimFrame) { cancelAnimationFrame(bubbleAnimFrame); bubbleAnimFrame = null; }
 
   const input = document.getElementById("contractInput");
   if (input) input.value = "";
+  document.getElementById("heroLoadingText").textContent = "Ready — paste a contract address above";
 
   hide("analysisResults");
   hide("loadingState");
@@ -1079,16 +990,16 @@ function resetAnalysis() {
   hide("aiAnalysisError");
   hide("aiLoadingIndicator");
 
-  setSearchStatus("idle", "");
+  const listEl = document.getElementById("holderList");
+  if (listEl) listEl.innerHTML = "";
 
-  document.getElementById("heroLoadingText").textContent = "Ready — paste a contract address above";
+  setSearchStatus("idle", "");
   if (window.lucide?.createIcons) window.lucide.createIcons();
 }
 
 // ============================================================
-//  View on DexScreener
+//  DexScreener link
 // ============================================================
 function viewChart() {
-  if (!currentTokenData?.address) return;
-  window.open(`https://dexscreener.com/solana/${currentTokenData.address}`, "_blank");
+  if (currentTokenData?.address) window.open(`https://dexscreener.com/solana/${currentTokenData.address}`, "_blank");
 }
