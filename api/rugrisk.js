@@ -8,26 +8,16 @@ export default async function handler(req, res) {
 
   try {
     const { summary } = req.body;
-    
+
     if (!summary) {
       return res.status(400).json({ ok: false, error: 'Missing summary parameter' });
     }
 
     const hfKey = process.env.HUGGINGFACE_API_KEY;
-    
+
+    // No key → tell client to use its coin-specific fallback
     if (!hfKey) {
-      // Return mock data based on summary keywords
-      const lowerSummary = summary.toLowerCase();
-      const hasRisk = lowerSummary.includes('risk') || lowerSummary.includes('caution');
-      const hasLock = lowerSummary.includes('lock');
-      
-      return res.json({
-        ok: true,
-        data: {
-          labels: ['safe', 'suspicious', 'rug pull'],
-          scores: hasRisk ? [0.2, 0.5, 0.3] : [0.6, 0.3, 0.1]
-        }
-      });
+      return res.json({ ok: false, error: 'No HUGGINGFACE_API_KEY configured' });
     }
 
     // Use HuggingFace zero-shot classification
@@ -51,39 +41,26 @@ export default async function handler(req, res) {
 
     if (!response.ok) {
       console.error('HuggingFace error:', response.status);
-      // Return mock data
-      const lowerSummary = summary.toLowerCase();
-      const hasRisk = lowerSummary.includes('risk') || lowerSummary.includes('caution');
-      
-      return res.json({
-        ok: true,
-        data: {
-          labels: ['safe', 'suspicious', 'rug pull'],
-          scores: hasRisk ? [0.2, 0.5, 0.3] : [0.6, 0.3, 0.1]
-        }
-      });
+      return res.json({ ok: false, error: `HuggingFace returned ${response.status}` });
     }
 
     const result = await response.json();
-    
+
+    // Sanity check
+    if (!result.labels || !result.scores) {
+      return res.json({ ok: false, error: 'Model returned unexpected format' });
+    }
+
     return res.json({
       ok: true,
       data: {
-        labels: result.labels || ['safe', 'suspicious', 'rug pull'],
-        scores: result.scores || [0.6, 0.3, 0.1]
+        labels: result.labels,
+        scores: result.scores
       }
     });
 
   } catch (e) {
     console.error('Rug risk API error:', e);
-    
-    // Return mock data
-    return res.json({
-      ok: true,
-      data: {
-        labels: ['safe', 'suspicious', 'rug pull'],
-        scores: [0.5, 0.3, 0.2]
-      }
-    });
+    return res.json({ ok: false, error: e.message });
   }
 }

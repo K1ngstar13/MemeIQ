@@ -3,513 +3,562 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MemeIQ</title>
+  <title>MemeIQ – Solana Token Intelligence</title>
 
-  <!-- Tailwind (CDN is fine for demo; for prod you’d compile) -->
+  <!-- Tailwind CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- Lucide -->
+  <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
 
-  <!-- Chart.js (UMD build ensures window.Chart exists) -->
+  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css" />
-
-  <!-- Your app -->
   <script src="script.js" defer></script>
 </head>
 
-<body class="text-gray-100 min-h-screen">
-  <!-- Header -->
-  <header class="border-b border-gray-800 bg-gray-900/50 backdrop-blur-md sticky top-0 z-50">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center space-x-3">
-          <div class="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center">
-            <i data-lucide="scan-search" class="w-6 h-6 text-white"></i>
-          </div>
-          <div>
-            <h1 class="text-xl font-bold gradient-text">MemeIQ</h1>
-            <p class="text-xs text-gray-400">Contract Intelligence & Risk Assessment</p>
-          </div>
+<body class="text-gray-100 min-h-screen overflow-x-hidden">
+
+  <!-- Animated background blobs -->
+  <div class="bg-blob bg-blob-1"></div>
+  <div class="bg-blob bg-blob-2"></div>
+  <div class="bg-blob bg-blob-3"></div>
+
+  <!-- God Rays Overlay -->
+  <div class="god-rays-overlay">
+    <div class="god-ray"></div>
+    <div class="god-ray"></div>
+    <div class="god-ray"></div>
+    <div class="god-ray"></div>
+    <div class="god-ray"></div>
+    <div class="god-ray"></div>
+  </div>
+
+  <!-- Animated Canvas Background -->
+  <canvas id="bgCanvas"></canvas>
+
+  <!-- ============================================
+       HEADER — always sticky, contains search
+       ============================================ -->
+  <header class="sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 py-3 flex items-center gap-3">
+
+      <!-- Logo -->
+      <div class="flex items-center space-x-2 shrink-0">
+        <div class="w-9 h-9 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/25 glow-pulse">
+          <i data-lucide="scan-search" class="w-5 h-5 text-white"></i>
         </div>
-
-        <div class="flex items-center space-x-4">
-          <div class="hidden md:flex items-center space-x-2 text-sm text-gray-400">
-            <span class="pulse-dot w-2 h-2 bg-green-500 rounded-full"></span>
-            <span>Solana Mainnet</span>
-          </div>
-
-          <button id="resetBtn" class="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">
-            <i data-lucide="refresh-cw" class="w-4 h-4 inline mr-2"></i>
-            Reset
-          </button>
+        <div class="hidden sm:block">
+          <span class="text-lg font-bold gradient-text leading-none">MemeIQ</span>
+          <p class="text-[10px] text-gray-600 leading-none">Contract Intelligence</p>
         </div>
       </div>
+
+      <!-- Search Bar (always visible, auto-triggers analysis) -->
+      <div class="flex-1 relative">
+        <input
+          type="text"
+          id="contractInput"
+          name="contractInput"
+          autocomplete="off"
+          placeholder="Paste any Solana token contract address…"
+          class="w-full bg-gray-900/60 border border-gray-700/50 rounded-xl px-4 py-2.5 pl-10 text-sm mono focus:outline-none focus:border-indigo-500 transition-all placeholder:text-gray-600"
+        />
+        <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600"></i>
+
+        <!-- Status indicator inside input -->
+        <div id="searchStatus" class="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+          <span id="searchStatusText" class="text-xs text-gray-600 hidden sm:block"></span>
+          <div id="searchSpinner" class="hidden w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+          <div id="searchDone" class="hidden w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+            <i data-lucide="check" class="w-2.5 h-2.5 text-white"></i>
+          </div>
+        </div>
+      </div>
+
+      <!-- Status + Reset -->
+      <div class="flex items-center gap-2 shrink-0">
+        <div class="hidden md:flex items-center gap-1.5 text-xs text-gray-600 bg-gray-900/50 rounded-full px-2.5 py-1 border border-gray-800">
+          <span class="pulse-dot w-1.5 h-1.5 bg-green-500 rounded-full inline-block"></span>
+          <span>Solana</span>
+        </div>
+        <button id="resetBtn" class="p-2 text-gray-600 hover:text-gray-300 transition-colors rounded-lg hover:bg-gray-800/50" title="Reset">
+          <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Example token quick-loads -->
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 pb-2.5 flex items-center gap-2 flex-wrap">
+      <span class="text-[11px] text-gray-700">Try:</span>
+      <button data-example="bonk" class="exampleBtn text-[11px] bg-gray-900/70 hover:bg-indigo-900/40 hover:border-indigo-500/40 border border-gray-800 px-2.5 py-1 rounded-full text-gray-500 hover:text-indigo-300 transition-all font-mono">BONK</button>
+      <button data-example="pepe" class="exampleBtn text-[11px] bg-gray-900/70 hover:bg-purple-900/40 hover:border-purple-500/40 border border-gray-800 px-2.5 py-1 rounded-full text-gray-500 hover:text-purple-300 transition-all font-mono">PEPE</button>
+      <button data-example="shiba" class="exampleBtn text-[11px] bg-gray-900/70 hover:bg-cyan-900/40 hover:border-cyan-500/40 border border-gray-800 px-2.5 py-1 rounded-full text-gray-500 hover:text-cyan-300 transition-all font-mono">Low Cap</button>
     </div>
   </header>
 
-  <!-- Main -->
-  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <!-- Search -->
-    <div id="searchSection" class="max-w-2xl mx-auto mb-12">
-      <div class="glass-panel rounded-2xl p-8 shadow-2xl">
-        <h2 class="text-2xl font-semibold mb-6 text-center">Analyze Token Contract</h2>
+  <!-- ============================================
+       MAIN CONTENT
+       ============================================ -->
+  <main class="relative z-10 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6">
 
-        <div class="relative">
-          <input
-            type="text"
-            id="contractInput"
-            name="contractInput"
-            autocomplete="off"
-            placeholder="Enter Solana Token Mint (e.g., DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263)"
-            class="w-full bg-gray-800/50 border border-gray-700 rounded-xl px-4 py-4 pl-12 text-sm mono focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all"
-          />
-          <i data-lucide="search" class="absolute left-4 top-4 w-5 h-5 text-gray-500"></i>
-
-          <button
-            id="analyzeBtn"
-            class="absolute right-2 top-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg text-sm font-medium transition-all hover:scale-105 active:scale-95"
-          >
-            Analyze
-          </button>
+    <!-- HERO STATE (shown on first load while auto-analyzing) -->
+    <div id="heroSection" class="flex flex-col items-center justify-center py-16 text-center animate-fade-in">
+      <div class="relative mb-8">
+        <div class="w-24 h-24 bg-gradient-to-br from-indigo-500 via-purple-600 to-fuchsia-600 rounded-3xl flex items-center justify-center shadow-2xl shadow-indigo-500/30 animate-float">
+          <i data-lucide="brain-circuit" class="w-12 h-12 text-white"></i>
         </div>
-
-        <p class="text-xs text-gray-500 mt-3 text-center">
-          Best results: token mint address. (Name search is optional and depends on APIs.)
-        </p>
-
-        <div class="mt-4 flex justify-center space-x-2">
-          <button data-example="bonk" class="exampleBtn text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-full text-gray-400 transition-colors">Try: BONK</button>
-          <button data-example="pepe" class="exampleBtn text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-full text-gray-400 transition-colors">Try: PEPE</button>
-          <button data-example="shiba" class="exampleBtn text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-full text-gray-400 transition-colors">Try: Low Cap Example</button>
-        </div>
+        <div class="absolute -inset-6 bg-indigo-500/10 rounded-full blur-3xl animate-pulse-slow pointer-events-none"></div>
+      </div>
+      <h2 class="text-4xl sm:text-5xl font-extrabold gradient-text mb-3 leading-tight tracking-tight">
+        Solana Token Intelligence
+      </h2>
+      <p class="text-gray-500 max-w-md mb-8 text-sm leading-relaxed">
+        Real-time rug pull detection, holder distribution, social sentiment scoring, and pattern recognition.
+        Paste any token contract above — analysis runs automatically.
+      </p>
+      <div class="flex items-center gap-3 text-sm text-gray-600">
+        <div class="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+        <span id="heroLoadingText">Loading BONK analysis…</span>
       </div>
     </div>
 
-    <!-- Loading -->
-    <div id="loadingState" class="hidden max-w-2xl mx-auto text-center py-12">
-      <div class="animate-spin w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-      <p class="text-gray-400 animate-pulse">Fetching real-time data…</p>
-      <p class="text-xs text-gray-600 mt-2 mono" id="loadingStep">Connecting to APIs…</p>
+    <!-- SKELETON LOADING STATE -->
+    <div id="loadingState" class="hidden space-y-5">
+      <div class="skeleton-card rounded-2xl h-24"></div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div class="skeleton-card rounded-xl h-40"></div>
+        <div class="skeleton-card rounded-xl h-40"></div>
+        <div class="skeleton-card rounded-xl h-40"></div>
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-5 gap-5">
+        <div class="lg:col-span-2 skeleton-card rounded-xl h-56"></div>
+        <div class="lg:col-span-3 skeleton-card rounded-xl h-56"></div>
+      </div>
+      <div class="skeleton-card rounded-xl h-52"></div>
+      <div class="skeleton-card rounded-xl h-64"></div>
+      <div class="skeleton-card rounded-xl h-56"></div>
     </div>
 
-    <!-- Results -->
-    <div id="analysisResults" class="hidden space-y-6">
-      <!-- Token Header -->
-      <div class="glass-panel rounded-2xl p-6 animate-fade-in">
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div class="flex items-center gap-4">
-            <img id="tokenImage" src="" alt="Token" class="w-16 h-16 rounded-full bg-gray-800" />
-            <div>
-              <div class="flex items-center gap-2 mb-1">
-                <h2 id="tokenName" class="text-2xl font-bold">Token Name</h2>
-                <span id="tokenSymbol" class="bg-gray-800 px-2 py-0.5 rounded text-sm font-mono text-gray-400">SYMBOL</span>
-                <span id="verifiedBadge" class="hidden bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full text-xs border border-blue-500/30">
-                  <i data-lucide="check-circle" class="w-3 h-3 inline mr-1"></i>Verified
-                </span>
-              </div>
+    <!-- ============================================
+         ANALYSIS RESULTS (populated automatically)
+         ============================================ -->
+    <div id="analysisResults" class="hidden space-y-5">
 
-              <p id="contractAddress" class="text-sm text-gray-500 mono cursor-pointer hover:text-indigo-400 transition-colors">
-                Address: <span class="text-gray-400">...</span>
+      <!-- ── TOKEN HEADER ── -->
+      <div class="glass-panel rounded-2xl p-5 animate-fade-in">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+
+          <!-- Left: Image + Name -->
+          <div class="flex items-center gap-4">
+            <div class="relative shrink-0">
+              <img
+                id="tokenImage"
+                src=""
+                alt="Token"
+                class="w-14 h-14 rounded-2xl border-2 border-indigo-500/25 object-cover"
+                onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'%3E%3Ccircle cx=\'50\' cy=\'50\' r=\'50\' fill=\'%236366f1\'/%3E%3C/svg%3E'"
+              />
+              <span id="verifiedBadge" class="hidden absolute -bottom-1 -right-1 bg-blue-500 rounded-full">
+                <i data-lucide="check" class="w-2.5 h-2.5 text-white m-0.5"></i>
+              </span>
+            </div>
+            <div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <h2 id="tokenName" class="text-xl font-bold leading-tight">Token Name</h2>
+                <span id="tokenSymbol" class="bg-gray-800 px-2 py-0.5 rounded-lg text-xs font-mono text-gray-400 border border-gray-700">SYM</span>
+              </div>
+              <p id="contractAddress" class="text-xs text-gray-600 font-mono mt-0.5 cursor-pointer hover:text-indigo-400 transition-colors" title="Click to copy">
+                Click to copy address
               </p>
             </div>
           </div>
 
-          <div class="flex items-center gap-4">
+          <!-- Right: Price + Score -->
+          <div class="flex items-center gap-6">
             <div class="text-right">
-              <p class="text-xs text-gray-500 mb-1">Overall Score</p>
-              <div class="flex items-center gap-2">
-                <div id="overallScore" class="text-3xl font-bold">--</div>
-                <div id="overallRating" class="px-3 py-1 rounded-full text-sm font-medium bg-gray-800">--</div>
+              <p class="text-xs text-gray-600 mb-0.5">Current Price</p>
+              <p id="currentPrice" class="text-2xl font-bold mono">$0</p>
+              <span id="priceChange" class="text-xs font-medium">--</span>
+            </div>
+            <div class="text-right">
+              <p class="text-xs text-gray-600 mb-0.5">Overall Score</p>
+              <div class="flex items-center gap-2 justify-end">
+                <span id="overallScore" class="text-4xl font-black">--</span>
+                <span id="overallRating" class="px-3 py-1.5 rounded-full text-xs font-bold">--</span>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="telegram-cta">
-  📱 Use MemeIQ on Telegram! 
-  Analyze tokens without opening browser.
-  👉 @memeiq_analysis_bot
-</div>
+      <!-- ── METRICS GRID ── -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 
-      <!-- Key Metrics -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <!-- Price -->
-        <div class="metric-card rounded-xl p-6 animate-fade-in" style="animation-delay: 0.1s">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-sm font-medium text-gray-400 flex items-center gap-2">
-              <i data-lucide="dollar-sign" class="w-4 h-4"></i>
-              Price Action
+        <!-- Price Action / Volume -->
+        <div class="metric-card rounded-xl p-5 animate-fade-in border-l-2 border-l-violet-500" style="animation-delay:0.08s">
+          <div class="flex justify-between items-start mb-4">
+            <h3 class="text-[10px] font-semibold text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
+              <i data-lucide="trending-up" class="w-3.5 h-3.5 text-violet-400"></i>
+              Volume &amp; Price
             </h3>
-            <span id="priceChange" class="text-sm font-medium">--</span>
+            <span id="volumeScore" class="text-base font-black text-violet-400">--/100</span>
           </div>
-          <div class="space-y-3">
+          <div class="grid grid-cols-2 gap-3 mb-4">
             <div>
-              <p class="text-2xl font-bold mono" id="currentPrice">$0</p>
-              <p class="text-xs text-gray-500">Current Price</p>
+              <p class="text-[10px] text-gray-600 mb-0.5">Market Cap</p>
+              <p id="marketCap" class="text-sm font-bold mono text-gray-200">$0</p>
             </div>
-            <div class="grid grid-cols-2 gap-4 pt-3 border-t border-gray-700/50">
-              <div>
-                <p class="text-sm font-semibold mono" id="marketCap">$0</p>
-                <p class="text-xs text-gray-500">Market Cap</p>
-              </div>
-              <div>
-                <p class="text-sm font-semibold mono" id="fdv">$0</p>
-                <p class="text-xs text-gray-500">FDV</p>
-              </div>
+            <div>
+              <p class="text-[10px] text-gray-600 mb-0.5">FDV</p>
+              <p id="fdv" class="text-sm font-bold mono text-gray-200">$0</p>
             </div>
+            <div>
+              <p class="text-[10px] text-gray-600 mb-0.5">Volume (24h)</p>
+              <p id="volume24h" class="text-sm font-bold mono text-gray-200">$0</p>
+            </div>
+            <div>
+              <p class="text-[10px] text-gray-600 mb-0.5">Buy/Sell</p>
+              <p id="buySellRatio" class="text-sm font-bold text-gray-200">--</p>
+            </div>
+          </div>
+          <div class="mt-1 mb-3 flex justify-between text-xs">
+            <span class="text-gray-600">Wash Trading Risk</span>
+            <span id="washTradingRisk" class="px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">--</span>
+          </div>
+          <div class="progress-bar-track h-2">
+            <div id="volumeBar" class="progress-bar-fill bg-gradient-to-r from-violet-600 to-violet-400" style="width:0%"></div>
           </div>
         </div>
 
         <!-- Liquidity -->
-        <div class="metric-card rounded-xl p-6 animate-fade-in border-l-4 border-l-indigo-500" style="animation-delay: 0.2s">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-sm font-medium text-gray-400 flex items-center gap-2">
-              <i data-lucide="droplets" class="w-4 h-4"></i>
-              Liquidity (A)
+        <div class="metric-card rounded-xl p-5 animate-fade-in border-l-2 border-l-indigo-500" style="animation-delay:0.12s">
+          <div class="flex justify-between items-start mb-4">
+            <h3 class="text-[10px] font-semibold text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
+              <i data-lucide="droplets" class="w-3.5 h-3.5 text-indigo-400"></i>
+              Liquidity
             </h3>
-            <span id="liquidityScore" class="text-lg font-bold text-indigo-400">--</span>
+            <span id="liquidityScore" class="text-base font-black text-indigo-400">--/100</span>
           </div>
-          <div class="space-y-3">
-            <div class="flex justify-between items-center">
-              <span class="text-sm text-gray-400">Total Liquidity</span>
-              <span id="totalLiquidity" class="font-semibold mono">$0</span>
+          <div class="space-y-2.5 mb-4">
+            <div class="flex justify-between text-xs">
+              <span class="text-gray-600">Total Liquidity</span>
+              <span id="totalLiquidity" class="font-semibold mono text-gray-200">$0</span>
             </div>
-            <div class="flex justify-between items-center">
-              <span class="text-sm text-gray-400">LP Burned/Locked</span>
+            <div class="flex justify-between text-xs">
+              <span class="text-gray-600">LP Burned/Locked</span>
               <span id="lpLocked" class="font-semibold text-green-400">--%</span>
             </div>
-            <div class="flex justify-between items-center">
-              <span class="text-sm text-gray-400">MCap/Liq Ratio</span>
-              <span id="mcapLiqRatio" class="font-semibold">--x</span>
+            <div class="flex justify-between text-xs">
+              <span class="text-gray-600">MCap/Liq Ratio</span>
+              <span id="mcapLiqRatio" class="font-semibold text-gray-200">--x</span>
             </div>
-            <div class="w-full bg-gray-700 rounded-full h-2 mt-2">
-              <div id="liquidityBar" class="bg-indigo-500 h-2 rounded-full transition-all duration-1000" style="width: 0%"></div>
-            </div>
+          </div>
+          <div class="progress-bar-track h-2">
+            <div id="liquidityBar" class="progress-bar-fill bg-gradient-to-r from-indigo-600 to-indigo-400" style="width:0%"></div>
           </div>
         </div>
 
-        <!-- Volume -->
-        <div class="metric-card rounded-xl p-6 animate-fade-in border-l-4 border-l-purple-500" style="animation-delay: 0.3s">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-sm font-medium text-gray-400 flex items-center gap-2">
-              <i data-lucide="activity" class="w-4 h-4"></i>
-              Volume Quality (B)
+        <!-- Holders -->
+        <div class="metric-card rounded-xl p-5 animate-fade-in border-l-2 border-l-emerald-500" style="animation-delay:0.16s">
+          <div class="flex justify-between items-start mb-4">
+            <h3 class="text-[10px] font-semibold text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
+              <i data-lucide="users" class="w-3.5 h-3.5 text-emerald-400"></i>
+              Holders
             </h3>
-            <span id="volumeScore" class="text-lg font-bold text-purple-400">--</span>
+            <span id="holderScore" class="text-base font-black text-emerald-400">--/100</span>
           </div>
-          <div class="space-y-3">
-            <div class="flex justify-between items-center">
-              <span class="text-sm text-gray-400">24h Volume</span>
-              <span id="volume24h" class="font-semibold mono">$0</span>
+          <div class="space-y-2 mb-4">
+            <div class="flex justify-between text-xs">
+              <span class="text-gray-600">Total Holders</span>
+              <span id="totalHolders" class="font-bold mono text-gray-200">0</span>
             </div>
-            <div class="flex justify-between items-center">
-              <span class="text-sm text-gray-400">Buy/Sell Ratio</span>
-              <span id="buySellRatio" class="font-semibold">--</span>
-            </div>
-            <div class="flex justify-between items-center">
-              <span class="text-sm text-gray-400">Wash Trading Risk</span>
-              <span id="washTradingRisk" class="text-xs px-2 py-1 rounded bg-gray-800">--</span>
-            </div>
-            <div class="w-full bg-gray-700 rounded-full h-2 mt-2">
-              <div id="volumeBar" class="bg-purple-500 h-2 rounded-full transition-all duration-1000" style="width: 0%"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Holders + Recommendation -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div class="metric-card rounded-xl p-6 animate-fade-in" style="animation-delay: 0.4s">
-          <div class="flex items-center justify-between mb-6">
-            <h3 class="text-lg font-semibold flex items-center gap-2">
-              <i data-lucide="users" class="w-5 h-5 text-green-400"></i>
-              Holder Growth (C)
-            </h3>
-            <span id="holderScore" class="text-2xl font-bold text-green-400">--/100</span>
-          </div>
-
-          <div class="grid grid-cols-2 gap-6 mb-6">
-            <div class="bg-gray-800/50 rounded-lg p-4">
-              <p class="text-3xl font-bold mono" id="totalHolders">0</p>
-              <p class="text-sm text-gray-400 mt-1">Total Holders</p>
-              <p class="text-xs text-green-400 mt-1 flex items-center gap-1">
-                <i data-lucide="trending-up" class="w-3 h-3"></i>
-                <span id="holderGrowth">--</span>
-              </p>
-            </div>
-            <div class="bg-gray-800/50 rounded-lg p-4">
-              <p class="text-3xl font-bold mono" id="newBuyers24h">--</p>
-              <p class="text-sm text-gray-400 mt-1">New Buyers (24h)</p>
-              <p class="text-xs text-gray-500 mt-1">Requires trader feed (optional)</p>
-            </div>
-          </div>
-
-          <div class="space-y-3">
-            <div class="flex justify-between items-center py-2 border-b border-gray-700/50">
-              <span class="text-sm text-gray-400">Top 10 Holders</span>
+            <div class="flex justify-between text-xs">
+              <span class="text-gray-600">Top 10 Holdings</span>
               <span id="top10Holders" class="font-semibold text-yellow-400">--%</span>
             </div>
-            <div class="flex justify-between items-center py-2 border-b border-gray-700/50">
-              <span class="text-sm text-gray-400">Dev Wallet %</span>
-              <span id="devWallet" class="font-semibold">--</span>
+            <div class="flex justify-between text-xs">
+              <span class="text-gray-600">Growth (24h / 7d)</span>
+              <span id="holderGrowth" class="font-semibold text-emerald-400">--</span>
             </div>
-            <div class="flex justify-between items-center py-2">
-              <span class="text-sm text-gray-400">Concentration Risk</span>
-              <span id="concentrationRisk" class="text-xs px-2 py-1 rounded bg-gray-800">--</span>
+            <div class="flex justify-between text-xs">
+              <span class="text-gray-600">New Buyers (24h)</span>
+              <span id="newBuyers24h" class="font-semibold text-gray-200">--</span>
+            </div>
+            <div class="flex justify-between text-xs">
+              <span class="text-gray-600">Concentration</span>
+              <span id="concentrationRisk" class="px-1.5 py-0.5 rounded-full bg-gray-800 text-gray-400">--</span>
             </div>
           </div>
+          <div class="progress-bar-track h-2">
+            <div id="holderBar" class="progress-bar-fill bg-gradient-to-r from-emerald-600 to-emerald-400" style="width:0%"></div>
+          </div>
         </div>
+      </div>
 
-        <div class="metric-card rounded-xl p-6 animate-fade-in bg-gradient-to-br from-gray-800/90 to-gray-900/90" style="animation-delay: 0.5s">
-          <div class="flex items-center justify-between mb-6">
-            <h3 class="text-lg font-semibold flex items-center gap-2">
-              <i data-lucide="target" class="w-5 h-5 text-red-400"></i>
-              Trading Recommendation
+      <!-- ── RECOMMENDATION + RISK GRID ── -->
+      <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
+
+        <!-- Trading Recommendation (2 cols) -->
+        <div class="lg:col-span-2 metric-card rounded-xl p-5 animate-fade-in" style="animation-delay:0.2s">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-xs font-semibold flex items-center gap-2 text-gray-300">
+              <i data-lucide="target" class="w-4 h-4 text-red-400"></i>
+              Trading Signal
             </h3>
-            <div id="recommendationBadge" class="px-4 py-2 rounded-full text-sm font-bold bg-gray-800">--</div>
+            <div id="recommendationBadge" class="px-3 py-1.5 rounded-full text-xs font-black">--</div>
           </div>
 
-          <div class="space-y-4 mb-6">
-            <div class="flex items-center justify-between bg-gray-800/50 p-4 rounded-lg border border-green-500/30">
+          <div class="space-y-3 mb-4">
+            <div class="flex items-center justify-between bg-gray-900/60 p-3 rounded-xl border border-emerald-500/15">
               <div>
-                <p class="text-sm text-gray-400 mb-1">Recommended Entry</p>
-                <p id="entryPrice" class="text-xl font-bold text-green-400 mono">$--</p>
+                <p class="text-[10px] text-gray-600 mb-0.5">Recommended Entry</p>
+                <p id="entryPrice" class="text-lg font-bold text-emerald-400 mono">$--</p>
               </div>
-              <i data-lucide="arrow-down-circle" class="w-8 h-8 text-green-400"></i>
+              <i data-lucide="arrow-down-circle" class="w-7 h-7 text-emerald-400/60"></i>
             </div>
-
-            <div class="flex items-center justify-between bg-gray-800/50 p-4 rounded-lg border border-red-500/30">
+            <div class="flex items-center justify-between bg-gray-900/60 p-3 rounded-xl border border-red-500/15">
               <div>
-                <p class="text-sm text-gray-400 mb-1">Take Profit Target</p>
-                <p id="exitPrice" class="text-xl font-bold text-red-400 mono">$--</p>
+                <p class="text-[10px] text-gray-600 mb-0.5">Take Profit Target</p>
+                <p id="exitPrice" class="text-lg font-bold text-red-400 mono">$--</p>
               </div>
-              <i data-lucide="arrow-up-circle" class="w-8 h-8 text-red-400"></i>
+              <i data-lucide="arrow-up-circle" class="w-7 h-7 text-red-400/60"></i>
             </div>
           </div>
 
-          <div class="bg-gray-900/50 rounded-lg p-4 border border-gray-700">
-            <p class="text-xs text-gray-500 mb-2 uppercase tracking-wider">Analysis Summary</p>
-            <p id="analysisSummary" class="text-sm text-gray-300 leading-relaxed">Analysis pending…</p>
+          <div class="bg-gray-900/40 rounded-xl p-3 border border-gray-800/50 mb-3">
+            <p class="text-[10px] text-gray-600 mb-1 uppercase tracking-wider">AI Summary</p>
+            <p id="analysisSummary" class="text-xs text-gray-400 leading-relaxed">Analysis running…</p>
           </div>
 
-          <div class="mt-4 flex gap-2">
-            <button id="alertBtn" class="flex-1 bg-indigo-600/20 border border-indigo-500/50 text-indigo-400 py-2 rounded-lg text-sm font-medium hover:bg-indigo-600/30 transition-all flex items-center justify-center gap-2">
-              <i data-lucide="bell" class="w-4 h-4"></i>
-              Set Price Alert
+          <div class="flex gap-2">
+            <button id="chartBtn" class="flex-1 bg-gray-800/60 border border-gray-700 text-gray-400 py-2 rounded-xl text-xs font-medium hover:bg-gray-700 hover:text-gray-200 transition-all flex items-center justify-center gap-1.5">
+              <i data-lucide="external-link" class="w-3 h-3"></i>
+              DexScreener
             </button>
-            <button id="chartBtn" class="flex-1 bg-gray-800 border border-gray-700 text-gray-300 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-all flex items-center justify-center gap-2">
-              <i data-lucide="external-link" class="w-4 h-4"></i>
-              View Chart
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Risk Grid -->
-      <div class="glass-panel rounded-xl p-6 animate-fade-in" style="animation-delay: 0.6s">
-        <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
-          <i data-lucide="shield-alert" class="w-5 h-5 text-yellow-500"></i>
-          Risk Analysis & Red Flags
-        </h3>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" id="riskGrid"></div>
-      </div>
-
-      <!-- AI Analysis -->
-      <div class="glass-panel rounded-xl p-6 animate-fade-in" style="animation-delay: 0.7s">
-        <div class="flex items-center justify-between mb-6">
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-lg flex items-center justify-center">
-              <i data-lucide="brain" class="w-6 h-6 text-white"></i>
-            </div>
-            <div>
-              <h3 class="text-lg font-semibold flex items-center gap-2">
-                AI Analysis
-                <span class="text-xs bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded-full border border-purple-500/30">Hugging Face</span>
-              </h3>
-              <p class="text-xs text-gray-400">Runs server-side (no keys in browser)</p>
-            </div>
-          </div>
-
-          <div class="flex items-center gap-3">
-            <input
-              type="text"
-              value="HF key stored server-side"
-              disabled
-              class="bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-1.5 text-xs mono w-56 opacity-60"
-            />
-            <button id="aiBtn" class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2">
-              <i data-lucide="sparkles" class="w-4 h-4"></i>
-              Run AI Analysis
+            <button id="alertBtn" class="flex-1 bg-indigo-600/15 border border-indigo-500/25 text-indigo-400 py-2 rounded-xl text-xs font-medium hover:bg-indigo-600/25 transition-all flex items-center justify-center gap-1.5">
+              <i data-lucide="bell" class="w-3 h-3"></i>
+              Set Alert
             </button>
           </div>
         </div>
 
-        <div id="aiAnalysisContent" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <!-- Social -->
-          <div class="bg-gray-800/40 rounded-xl p-5 border border-gray-700">
-            <div class="flex items-center justify-between mb-4">
-              <h4 class="font-medium text-sm flex items-center gap-2">
-                <i data-lucide="message-circle" class="w-4 h-4 text-blue-400"></i>
-                Social Sentiment
-              </h4>
-              <div id="sentimentLoading" class="hidden">
-                <div class="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
-              </div>
-            </div>
+        <!-- Risk Analysis (3 cols) -->
+        <div class="lg:col-span-3 glass-panel rounded-xl p-5 animate-fade-in" style="animation-delay:0.24s">
+          <h3 class="text-xs font-semibold mb-4 flex items-center gap-2 text-gray-300">
+            <i data-lucide="shield-alert" class="w-4 h-4 text-yellow-400"></i>
+            Risk Flags & Security Checks
+          </h3>
+          <div class="grid grid-cols-2 gap-3" id="riskGrid"></div>
+        </div>
+      </div>
+
+      <!-- ── AI ANALYSIS (auto-populated, no button) ── -->
+      <div class="glass-panel rounded-xl p-5 animate-fade-in" style="animation-delay:0.28s">
+        <div class="flex items-center gap-3 mb-5">
+          <div class="w-9 h-9 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/20 shrink-0">
+            <i data-lucide="brain" class="w-5 h-5 text-white"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <h3 class="text-sm font-semibold flex items-center gap-2">
+              AI Analysis
+              <span class="text-[10px] bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded-full border border-purple-500/25 font-medium">Auto-Running</span>
+            </h3>
+            <p class="text-[11px] text-gray-600">Sentiment · Pattern Recognition · Rug Pull Classification</p>
+          </div>
+          <div id="aiLoadingIndicator" class="hidden shrink-0">
+            <div class="w-5 h-5 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin"></div>
+          </div>
+        </div>
+
+        <div id="aiAnalysisContent" class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+          <!-- Social Sentiment -->
+          <div class="bg-gray-900/50 rounded-xl p-4 border border-gray-800/50">
+            <h4 class="text-[10px] font-semibold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+              <i data-lucide="message-circle" class="w-3.5 h-3.5 text-blue-400"></i>
+              Social Sentiment
+            </h4>
 
             <div id="sentimentResult" class="hidden">
-              <div class="flex items-center justify-between mb-4">
+              <!-- Bullish / Neutral / Bearish -->
+              <div class="flex justify-between mb-4">
                 <div class="text-center flex-1">
-                  <p class="text-2xl font-bold text-green-400" id="positiveSentiment">0%</p>
-                  <p class="text-xs text-gray-500">Positive</p>
+                  <p id="positiveSentiment" class="text-2xl font-black text-emerald-400">0%</p>
+                  <p class="text-[10px] text-gray-600 mt-0.5">Bullish</p>
                 </div>
                 <div class="text-center flex-1">
-                  <p class="text-2xl font-bold text-gray-400" id="neutralSentiment">0%</p>
-                  <p class="text-xs text-gray-500">Neutral</p>
+                  <p id="neutralSentiment" class="text-2xl font-black text-gray-500">0%</p>
+                  <p class="text-[10px] text-gray-600 mt-0.5">Neutral</p>
                 </div>
                 <div class="text-center flex-1">
-                  <p class="text-2xl font-bold text-red-400" id="negativeSentiment">0%</p>
-                  <p class="text-xs text-gray-500">Negative</p>
+                  <p id="negativeSentiment" class="text-2xl font-black text-red-400">0%</p>
+                  <p class="text-[10px] text-gray-600 mt-0.5">Bearish</p>
                 </div>
               </div>
 
-              <div class="space-y-2">
-                <div class="flex justify-between text-xs">
-                  <span class="text-gray-400">Overall Score</span>
-                  <span id="sentimentScore" class="font-semibold">--/100</span>
+              <!-- Gradient score bar -->
+              <div class="mb-3">
+                <div class="flex justify-between text-[10px] mb-1.5">
+                  <span class="text-gray-600">Sentiment Score</span>
+                  <span id="sentimentScore" class="font-bold text-gray-300">--/100</span>
                 </div>
-                <div class="w-full bg-gray-700 rounded-full h-2">
-                  <div id="sentimentBar" class="h-2 rounded-full transition-all duration-1000 bg-blue-500" style="width: 0%"></div>
+                <div class="sentiment-gradient-bar">
+                  <div id="sentimentCursor" class="sentiment-cursor" style="left:50%"></div>
                 </div>
-                <p id="sentimentSummary" class="text-xs text-gray-400 mt-2">Analysis pending...</p>
               </div>
 
-              <div class="mt-4 pt-4 border-t border-gray-700/50">
-                <p class="text-xs text-gray-500 mb-2">Recent Mentions Analysis:</p>
-                <div id="sentimentMentions" class="space-y-1 text-xs"></div>
+              <p id="sentimentSummary" class="text-[11px] text-gray-500 leading-relaxed"></p>
+
+              <div class="mt-3 pt-3 border-t border-gray-800/50">
+                <p class="text-[10px] text-gray-600 mb-1.5">Recent Signal:</p>
+                <div id="sentimentMentions" class="space-y-1 text-[11px]"></div>
               </div>
             </div>
 
-            <div id="sentimentPlaceholder" class="text-center py-8 text-gray-500 text-sm">
-              <i data-lucide="zap" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
-              Click "Run AI Analysis"
+            <div id="sentimentPlaceholder" class="flex flex-col items-center justify-center py-8 text-gray-700">
+              <div class="w-6 h-6 border-2 border-blue-500/50 border-t-transparent rounded-full animate-spin mb-2"></div>
+              <p class="text-[11px]">Fetching social data…</p>
             </div>
           </div>
 
-          <!-- Pattern -->
-          <div class="bg-gray-800/40 rounded-xl p-5 border border-gray-700">
-            <div class="flex items-center justify-between mb-4">
-              <h4 class="font-medium text-sm flex items-center gap-2">
-                <i data-lucide="line-chart" class="w-4 h-4 text-purple-400"></i>
-                Pattern Recognition
-              </h4>
-              <div id="patternLoading" class="hidden">
-                <div class="animate-spin w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full"></div>
-              </div>
-            </div>
+          <!-- Pattern Recognition -->
+          <div class="bg-gray-900/50 rounded-xl p-4 border border-gray-800/50">
+            <h4 class="text-[10px] font-semibold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+              <i data-lucide="line-chart" class="w-3.5 h-3.5 text-purple-400"></i>
+              Pattern Recognition
+            </h4>
 
             <div id="patternResult" class="hidden">
-              <div class="mb-4">
-                <div class="flex items-center justify-between mb-2">
-                  <span class="text-xs text-gray-400">Detected Pattern</span>
-                  <span id="patternName" class="text-sm font-semibold text-purple-400">--</span>
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-[10px] text-gray-600">Detected Pattern</span>
+                <span id="patternName" class="text-sm font-bold text-purple-400">--</span>
+              </div>
+              <p id="patternDescription" class="text-[11px] text-gray-600 mb-3 leading-relaxed">--</p>
+
+              <div class="space-y-2 text-xs">
+                <div class="flex justify-between items-center py-1.5 border-b border-gray-800/50">
+                  <span class="text-gray-600">Confidence</span>
+                  <span id="patternConfidence" class="font-bold text-gray-200">--%</span>
                 </div>
-                <p id="patternDescription" class="text-xs text-gray-500 leading-relaxed">--</p>
+                <div class="flex justify-between items-center py-1.5 border-b border-gray-800/50">
+                  <span class="text-gray-600">Trend</span>
+                  <span id="patternTrend" class="px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">--</span>
+                </div>
+                <div class="flex justify-between items-center py-1.5 border-b border-gray-800/50">
+                  <span class="text-gray-600">Support</span>
+                  <span id="supportLevel" class="text-emerald-400 font-mono font-semibold">--</span>
+                </div>
+                <div class="flex justify-between items-center py-1.5">
+                  <span class="text-gray-600">Resistance</span>
+                  <span id="resistanceLevel" class="text-red-400 font-mono font-semibold">--</span>
+                </div>
               </div>
 
-              <div class="space-y-3">
-                <div class="flex justify-between items-center py-2 border-b border-gray-700/50">
-                  <span class="text-xs text-gray-400">Confidence</span>
-                  <span id="patternConfidence" class="text-sm font-semibold">--%</span>
-                </div>
-                <div class="flex justify-between items-center py-2 border-b border-gray-700/50">
-                  <span class="text-xs text-gray-400">Trend Direction</span>
-                  <span id="patternTrend" class="text-xs px-2 py-1 rounded bg-gray-800">--</span>
-                </div>
-                <div class="flex justify-between items-center py-2">
-                  <span class="text-xs text-gray-400">Support/Resistance</span>
-                  <div class="text-right">
-                    <p id="supportLevel" class="text-xs text-green-400">S: --</p>
-                    <p id="resistanceLevel" class="text-xs text-red-400">R: --</p>
-                  </div>
-                </div>
-              </div>
-
-              <div class="mt-4 bg-purple-900/20 border border-purple-500/20 rounded-lg p-3">
-                <p class="text-xs text-purple-400 font-medium mb-1">AI Prediction</p>
-                <p id="patternPrediction" class="text-xs text-gray-300">--</p>
+              <div class="mt-3 bg-purple-900/15 border border-purple-500/15 rounded-xl p-3">
+                <p class="text-[10px] text-purple-400 font-semibold uppercase mb-1">AI Prediction</p>
+                <p id="patternPrediction" class="text-[11px] text-gray-400 leading-relaxed">--</p>
               </div>
             </div>
 
-            <div id="patternPlaceholder" class="text-center py-8 text-gray-500 text-sm">
-              <i data-lucide="scan" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
-              Analyze patterns from price history
+            <div id="patternPlaceholder" class="flex flex-col items-center justify-center py-8 text-gray-700">
+              <div class="w-6 h-6 border-2 border-purple-500/50 border-t-transparent rounded-full animate-spin mb-2"></div>
+              <p class="text-[11px]">Analyzing chart patterns…</p>
             </div>
           </div>
 
-          <!-- Rug risk -->
-          <div class="bg-gray-800/40 rounded-xl p-5 border border-gray-700">
-            <div class="flex items-center justify-between mb-4">
-              <h4 class="font-medium text-sm flex items-center gap-2">
-                <i data-lucide="shield" class="w-4 h-4 text-red-400"></i>
-                Rug Pull Risk
-              </h4>
-              <div id="rugPullLoading" class="hidden">
-                <div class="animate-spin w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full"></div>
-              </div>
-            </div>
+          <!-- Rug Pull Risk -->
+          <div class="bg-gray-900/50 rounded-xl p-4 border border-gray-800/50">
+            <h4 class="text-[10px] font-semibold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+              <i data-lucide="shield" class="w-3.5 h-3.5 text-red-400"></i>
+              Rug Pull Risk
+            </h4>
 
             <div id="rugPullResult" class="hidden">
               <div class="text-center mb-4">
-                <div id="rugPullScore" class="text-4xl font-bold mb-1">--</div>
-                <p class="text-xs text-gray-500">Risk Score (0-100, lower is safer)</p>
+                <div id="rugPullScore" class="text-6xl font-black mb-0.5">--</div>
+                <p class="text-[10px] text-gray-600">/ 100 Risk Score — lower is safer</p>
               </div>
 
-              <div class="space-y-2 mb-4" id="rugPullIndicators"></div>
+              <div class="space-y-1.5 mb-4" id="rugPullIndicators"></div>
 
-              <div class="bg-gray-900/50 rounded-lg p-3 border border-gray-700">
-                <p class="text-xs text-gray-500 mb-2">ML Model Flags:</p>
-                <div id="mlFlags" class="flex flex-wrap gap-2"></div>
+              <div class="bg-gray-900/60 rounded-xl p-3 mb-3 border border-gray-800/50">
+                <p class="text-[10px] text-gray-600 mb-1.5 uppercase tracking-wider">ML Model Flags</p>
+                <div id="mlFlags" class="flex flex-wrap gap-1.5"></div>
               </div>
 
-              <div class="mt-4 p-3 rounded-lg border" id="rugPullVerdictBox">
-                <p id="rugPullVerdict" class="text-sm font-medium text-center">--</p>
+              <div class="p-3 rounded-xl border" id="rugPullVerdictBox">
+                <p id="rugPullVerdict" class="text-xs font-semibold text-center">--</p>
               </div>
             </div>
 
-            <div id="rugPullPlaceholder" class="text-center py-8 text-gray-500 text-sm">
-              <i data-lucide="alert-triangle" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
-              Run model risk classification
+            <div id="rugPullPlaceholder" class="flex flex-col items-center justify-center py-8 text-gray-700">
+              <div class="w-6 h-6 border-2 border-red-500/50 border-t-transparent rounded-full animate-spin mb-2"></div>
+              <p class="text-[11px]">Classifying rug risk…</p>
             </div>
           </div>
         </div>
 
-        <div id="aiAnalysisError" class="hidden mt-4 p-4 bg-red-900/20 border border-red-500/30 rounded-lg text-red-400 text-sm">
-          <i data-lucide="alert-circle" class="w-4 h-4 inline mr-2"></i>
-          <span id="aiErrorMessage">Error running AI analysis.</span>
+        <!-- AI error state -->
+        <div id="aiAnalysisError" class="hidden mt-4 p-3.5 bg-red-900/15 border border-red-500/25 rounded-xl text-red-400 text-xs flex items-center gap-2">
+          <i data-lucide="alert-circle" class="w-4 h-4 shrink-0"></i>
+          <span id="aiErrorMessage">AI analysis unavailable — API keys may not be configured.</span>
         </div>
       </div>
 
-      <!-- Chart -->
-      <div class="glass-panel rounded-xl p-6 animate-fade-in" style="animation-delay: 0.8s">
-        <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
-          <i data-lucide="bar-chart-3" class="w-5 h-5 text-indigo-400"></i>
-          Volume & Price Trend
+      <!-- ── HOLDER BUBBLE MAP ── -->
+      <div class="glass-panel rounded-xl p-5 animate-fade-in" style="animation-delay:0.32s">
+        <h3 class="text-xs font-semibold mb-1 flex items-center gap-2 text-gray-300">
+          <i data-lucide="circle-dot" class="w-4 h-4 text-indigo-400"></i>
+          Holder Bubble Map
         </h3>
-        <div class="h-64 w-full">
-          <canvas id="volumeChart"></canvas>
+        <p class="text-[11px] text-gray-600 mb-4">Hollow circles = holders (size ∝ % supply). Filled dots = cluster wallets, connected by lines. Click any bubble or row to inspect.</p>
+
+        <!-- Split: canvas left, holder list right -->
+        <div class="flex gap-3" style="height: 300px;">
+
+          <!-- Bubble canvas -->
+          <div id="bubbleMapContainer" class="flex-1 relative rounded-xl overflow-hidden border border-gray-800/30 bg-[#040813] min-w-0">
+            <canvas id="bubbleMapCanvas" style="display:block;width:100%;height:100%;"></canvas>
+            <div id="bubbleTooltip" class="absolute hidden bg-gray-900/95 border border-gray-700/80 rounded-lg px-3 py-2 text-xs pointer-events-none z-10 shadow-xl min-w-max"></div>
+          </div>
+
+          <!-- Holder list -->
+          <div id="holderList" class="w-44 flex flex-col gap-0 overflow-y-auto shrink-0 rounded-xl bg-gray-900/30 border border-gray-800/30 p-1"
+               style="scrollbar-width:thin;scrollbar-color:#1e293b transparent;">
+            <!-- Populated by renderBubbleMap() -->
+          </div>
         </div>
       </div>
-    </div>
+
+      <!-- ── VOLUME & PRICE CHART ── -->
+      <div class="glass-panel rounded-xl p-5 animate-fade-in" style="animation-delay:0.36s">
+        <h3 class="text-xs font-semibold mb-4 flex items-center gap-2 text-gray-300">
+          <i data-lucide="bar-chart-3" class="w-4 h-4 text-indigo-400"></i>
+          Volume & Price Trend
+          <span class="text-[10px] text-gray-600 font-normal">7-day history</span>
+        </h3>
+        <div class="chart-wrapper">
+          <div style="height: 220px; position: relative;">
+            <canvas id="volumeChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Telegram CTA -->
+      <div class="telegram-cta animate-fade-in" style="animation-delay:0.4s">
+        📱 Analyze tokens instantly on Telegram → <strong>@memeiq_analysis_bot</strong>
+      </div>
+
+    </div><!-- /analysisResults -->
   </main>
 
-  <footer class="border-t border-gray-800 mt-12 py-6 text-center text-sm text-gray-600">
-    <p>This tool provides analysis based on API data and AI models. Always DYOR.</p>
+  <footer class="relative z-10 border-t border-gray-900/80 py-5 mt-4 text-center text-[11px] text-gray-700">
+    <p>MemeIQ provides on-chain data analysis. Always DYOR. Not financial advice. Data sourced from Birdeye & Hugging Face.</p>
   </footer>
+
 </body>
 </html>
