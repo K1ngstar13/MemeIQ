@@ -14,17 +14,10 @@ export default async function handler(req, res) {
     }
 
     const hfKey = process.env.HUGGINGFACE_API_KEY;
-    
+
+    // No key → tell the client to use its coin-specific fallback
     if (!hfKey) {
-      // Return mock data if no key
-      return res.json({
-        ok: true,
-        preds: [
-          { label: "positive", score: 0.45 },
-          { label: "neutral", score: 0.35 },
-          { label: "negative", score: 0.20 }
-        ]
-      });
+      return res.json({ ok: false, error: 'No HUGGINGFACE_API_KEY configured' });
     }
 
     // Call HuggingFace sentiment model
@@ -45,38 +38,23 @@ export default async function handler(req, res) {
 
     if (!response.ok) {
       console.error('HuggingFace error:', response.status);
-      // Return mock data on error
-      return res.json({
-        ok: true,
-        preds: [
-          { label: "positive", score: 0.45 },
-          { label: "neutral", score: 0.35 },
-          { label: "negative", score: 0.20 }
-        ]
-      });
+      return res.json({ ok: false, error: `HuggingFace returned ${response.status}` });
     }
 
     const result = await response.json();
-    
+
     // HF returns array like: [[{label: "positive", score: 0.9}]]
     const predictions = Array.isArray(result[0]) ? result[0] : result;
 
-    return res.json({
-      ok: true,
-      preds: predictions
-    });
+    // Sanity check — if the model returned an error object instead of predictions
+    if (!Array.isArray(predictions) || predictions.length === 0) {
+      return res.json({ ok: false, error: 'Model returned unexpected format' });
+    }
+
+    return res.json({ ok: true, preds: predictions });
 
   } catch (e) {
     console.error('Sentiment API error:', e);
-    
-    // Return mock data on error
-    return res.json({
-      ok: true,
-      preds: [
-        { label: "positive", score: 0.45 },
-        { label: "neutral", score: 0.35 },
-        { label: "negative", score: 0.20 }
-      ]
-    });
+    return res.json({ ok: false, error: e.message });
   }
 }

@@ -892,7 +892,8 @@ async function runAIAnalysis(capturedId) {
   show("aiLoadingIndicator");
 
   try {
-    const text    = `${currentTokenData.name} ${currentTokenData.symbol} solana crypto price sentiment`;
+    // Pass the full on-chain summary so the model gets coin-specific context
+    const text    = currentTokenData.summaryForAI || `${currentTokenData.name} ${currentTokenData.symbol}`;
     const summary = currentTokenData.summaryForAI;
 
     const [sentRes, rugRes] = await Promise.all([
@@ -905,7 +906,7 @@ async function runAIAnalysis(capturedId) {
 
     // Sentiment
     const sentData = sentRes?.ok
-      ? normalizeSentimentFromPreds(sentRes.preds, currentTokenData.name)
+      ? normalizeSentimentFromPreds(sentRes.preds, currentTokenData)
       : generateFallbackSentiment(currentTokenData);
     displaySentimentResults(sentData);
     hide("sentimentPlaceholder"); show("sentimentResult");
@@ -956,7 +957,11 @@ async function postJSON(url, body) {
 }
 
 // ── Sentiment helpers ────────────────────────────────────────
-function normalizeSentimentFromPreds(preds = [], tokenName) {
+// Called only when HuggingFace returns real predictions.
+// Blends model output with coin-specific on-chain context.
+function normalizeSentimentFromPreds(preds = [], t) {
+  const name    = typeof t === "string" ? t : (t?.name || "Token");
+  const coin    = typeof t === "object" ? t : currentTokenData;
   const pos = preds.find(p => /positive|bullish/i.test(p.label))?.score || 0;
   const neu = preds.find(p => /neutral/i.test(p.label))?.score          || 0;
   const neg = preds.find(p => /negative|bearish/i.test(p.label))?.score || 0;
@@ -964,34 +969,128 @@ function normalizeSentimentFromPreds(preds = [], tokenName) {
   const neutral  = Math.round(neu * 100);
   const negative = Math.max(0, 100 - positive - neutral);
   const score    = Math.max(0, Math.min(100, Math.round(((pos - neg) + 1) * 50)));
+
+  // Build coin-specific mentions rather than generic filler
+  const mentions = buildSentimentMentions(coin);
+  const summary  = buildSentimentSummary(coin, positive);
+  return { positive, neutral, negative, score, summary, mentions };
+}
+
+// Fully data-driven fallback — used when HuggingFace is unavailable
+function generateFallbackSentiment(t) {
+  const change   = Number(t.priceChange24h) || 0;
+  const holders  = Number(t.holders)        || 0;
+  const liqPct   = Number(t.lpLockedPct)    || 0;
+  const top10    = Number(t.top10Pct)       || 0;
+  const mcap     = Number(t.marketCap)      || 0;
+  const vol      = Number(t.volume24hUSD)   || 0;
+
+  // Derive a positive-sentiment base from actual coin metrics
+  let posBase = 50;
+  // Price momentum (most direct signal)
+  if      (change > 20)  posBase += 22;
+  else if (change > 10)  posBase += 15;
+  else if (change > 3)   posBase +=  7;
+  else if (change < -20) posBase -= 22;
+  else if (change < -10) posBase -= 15;
+  else if (change < -3)  posBase -=  7;
+  // Holder base
+  if      (holders >= 100_000) posBase += 12;
+  else if (holders >= 10_000)  posBase +=  7;
+  else if (holders >= 1_000)   posBase +=  2;
+  else if (holders < 100 && holders > 0) posBase -= 18;
+  else if (holders < 500)      posBase -= 10;
+  // LP security
+  if      (liqPct >= 90) posBase += 10;
+  else if (liqPct >= 50) posBase +=  4;
+  else if (liqPct <  20) posBase -= 12;
+  // Whale concentration risk
+  if      (top10 >= 70) posBase -= 15;
+  else if (top10 >= 50) posBase -=  8;
+  else if (top10 <= 20 && top10 > 0) posBase += 8;
+  // Volume health (vol/mcap)
+  if (mcap > 0 && vol > 0) {
+    const vm = vol / mcap;
+    if (vm >= 0.02 && vm <= 0.5) posBase += 5;
+    else if (vm > 1)              posBase -= 8;
+    else if (vm < 0.001)          posBase -= 5;
+  }
+
+  const positive = Math.max(5, Math.min(88, Math.round(posBase)));
+  const negative = Math.max(5, Math.min(80, Math.round(100 - posBase)));
+  const neutral  = Math.max(0, 100 - positive - negative);
+  const score    = Math.max(5, Math.min(95, Math.round(posBase)));
+
   return {
     positive, neutral, negative, score,
-    summary: positive > 65 ? `Strong bullish signal for ${tokenName}.`
-      : positive > 40 ? `Mixed community sentiment.`
-      : `Bearish signals detected — caution advised.`,
-    mentions: [
-      { text: "On-chain activity looks healthy", sentiment: "positive" },
-      { text: "Monitor top holder movements", sentiment: "neutral" },
-      { text: "Low LP lock is a concern",       sentiment: "negative" }
-    ]
+    summary:  buildSentimentSummary(t, positive),
+    mentions: buildSentimentMentions(t)
   };
 }
 
-function generateFallbackSentiment(t) {
-  const score    = t.scores?.overall ?? 50;
-  const positive = Math.round(score * 0.55 + Math.random() * 12);
-  const negative = Math.round((100 - score) * 0.45 + Math.random() * 8);
-  const neutral  = Math.max(0, 100 - positive - negative);
-  return {
-    positive, neutral, negative,
-    score: Math.min(100, Math.max(0, score + Math.round(Math.random() * 8 - 4))),
-    summary: `Estimated from on-chain data for ${t.name || "this token"}. Reflects holder distribution & liquidity health.`,
-    mentions: [
-      { text: `${Number(t.holders || 0).toLocaleString()} total holders`,              sentiment: "positive" },
-      { text: `Top 10 hold ${t.top10Pct || "?"}% — watch concentration`,              sentiment: "neutral"  },
-      { text: t.lpLockedPct > 50 ? `LP ${t.lpLockedPct}% locked` : `Low LP lock (${t.lpLockedPct || 0}%)`, sentiment: t.lpLockedPct > 50 ? "positive" : "negative" }
-    ]
-  };
+// Coin-specific summary sentence
+function buildSentimentSummary(t, positive) {
+  const name    = t?.name || "Token";
+  const change  = Number(t?.priceChange24h) || 0;
+  const holders = Number(t?.holders) || 0;
+  const liqPct  = Number(t?.lpLockedPct) || 0;
+  let s = `${name}: `;
+  if      (change > 10) s += `strong bullish momentum (+${change.toFixed(1)}%). `;
+  else if (change > 2)  s += `mild upward trend (+${change.toFixed(1)}%). `;
+  else if (change < -10) s += `sharp sell-off (${change.toFixed(1)}%). `;
+  else if (change < -2)  s += `slight pullback (${change.toFixed(1)}%). `;
+  else                   s += `price consolidating (${change >= 0 ? "+" : ""}${change.toFixed(2)}%). `;
+  if (holders >= 10_000)      s += `${(holders / 1000).toFixed(0)}k+ holders — strong network. `;
+  else if (holders > 0 && holders < 200) s += `Very thin holder base (${holders}). `;
+  s += liqPct >= 70 ? `LP locked ${Math.round(liqPct)}%.`
+     : liqPct > 0  ? `LP lock only ${Math.round(liqPct)}% — monitor.`
+     : "";
+  return s.trim();
+}
+
+// Coin-specific bullet-point mentions
+function buildSentimentMentions(t) {
+  const change  = Number(t?.priceChange24h) || 0;
+  const holders = Number(t?.holders) || 0;
+  const liqPct  = Number(t?.lpLockedPct) || 0;
+  const top10   = Number(t?.top10Pct) || 0;
+  const vol     = Number(t?.volume24hUSD) || 0;
+  const mcap    = Number(t?.marketCap) || 0;
+  const mentions = [];
+
+  // Price change
+  mentions.push({
+    text: Math.abs(change) < 0.5
+      ? `Price flat at ${(change >= 0 ? "+" : "")}${change.toFixed(2)}% — no clear direction`
+      : `${change >= 0 ? "+" : ""}${change.toFixed(2)}% price change in 24 h`,
+    sentiment: change > 5 ? "positive" : change < -5 ? "negative" : "neutral"
+  });
+
+  // Holders
+  mentions.push({
+    text: holders >= 10_000
+      ? `${holders.toLocaleString()} holders — healthy community base`
+      : holders >= 500
+        ? `${holders.toLocaleString()} holders — growing but thin`
+        : holders > 0
+          ? `Only ${holders} holders — very early / high-risk`
+          : "Holder count unavailable",
+    sentiment: holders >= 10_000 ? "positive" : holders < 500 ? "negative" : "neutral"
+  });
+
+  // LP lock
+  mentions.push({
+    text: liqPct >= 80
+      ? `LP ${Math.round(liqPct)}% locked — low rug risk`
+      : liqPct >= 40
+        ? `LP ${Math.round(liqPct)}% locked — moderate security`
+        : liqPct > 0
+          ? `LP only ${Math.round(liqPct)}% locked — elevated rug risk`
+          : "LP lock status unknown",
+    sentiment: liqPct >= 70 ? "positive" : liqPct < 30 ? "negative" : "neutral"
+  });
+
+  return mentions;
 }
 
 function displaySentimentResults(d) {
@@ -1057,33 +1156,87 @@ function displayPatternResults(d) {
 function normalizeRugRiskFromZeroShot(z) {
   const labels = z?.labels || [], scores = z?.scores || [];
   const idx    = labels.findIndex(l => /rug|scam/i.test(String(l)));
-  return generateRugPullDataFromScore(Math.round((idx >= 0 ? scores[idx] : 0.25) * 100));
+  return generateRugPullDataFromScore(Math.round((idx >= 0 ? scores[idx] : 0.25) * 100), currentTokenData);
 }
 
 function generateRugRiskFromTokenData(t) {
-  let score = 18;
-  if (Number(t.lpLockedPct) < 30) score += 30;
-  else if (Number(t.lpLockedPct) < 60) score += 14;
-  if (t.concentrationLabel === "Extreme") score += 25;
-  else if (t.concentrationLabel === "Moderate") score += 10;
-  if (t.risks?.find(r => r.name === "Mint Authority"  && r.risk)) score += 15;
+  const liqPct  = Number(t.lpLockedPct)  || 0;
+  const top10   = Number(t.top10Pct)     || 0;
+  const holders = Number(t.holders)      || 0;
+  const liq     = Number(t.liquidityUSD) || 0;
+
+  let score = 8; // start optimistic
+
+  // LP lock is the #1 rug indicator
+  if      (liqPct === 0)  score += 38;
+  else if (liqPct < 20)   score += 30;
+  else if (liqPct < 50)   score += 18;
+  else if (liqPct < 80)   score +=  8;
+  // top-10 concentration
+  if      (top10 >= 80)   score += 30;
+  else if (top10 >= 60)   score += 18;
+  else if (top10 >= 40)   score +=  8;
+  // Holder count — very thin base = easy rug
+  if      (holders > 0 && holders < 10)  score += 28;
+  else if (holders < 100)                score += 18;
+  else if (holders < 500)                score +=  8;
+  // Authority flags
+  if (t.risks?.find(r => r.name === "Mint Authority"   && r.risk)) score += 15;
   if (t.risks?.find(r => r.name === "Freeze Authority" && r.risk)) score += 10;
-  return generateRugPullDataFromScore(Math.min(95, Math.max(5, score)));
+  // Wash trading
+  if      (t.washRiskLabel === "High")   score += 12;
+  else if (t.washRiskLabel === "Medium") score +=  5;
+  // Tiny liquidity pool
+  if      (liq > 0 && liq < 1_000)  score += 18;
+  else if (liq < 10_000)             score +=  8;
+
+  return generateRugPullDataFromScore(Math.min(95, Math.max(5, score)), t);
 }
 
-function generateRugPullDataFromScore(score) {
-  const level = score < 30 ? "Low" : score < 65 ? "Medium" : "High";
+function generateRugPullDataFromScore(score, t) {
+  // t is optional — if provided, use real values in indicator labels
+  const tok     = t || currentTokenData || {};
+  const liqPct  = Number(tok.lpLockedPct)  || 0;
+  const top10   = Number(tok.top10Pct)     || 0;
+  const holders = Number(tok.holders)      || 0;
+  const level   = score < 30 ? "Low" : score < 60 ? "Medium" : "High";
+
+  const lpLabel =
+    liqPct >= 80 ? `${Math.round(liqPct)}% locked ✅`  :
+    liqPct >= 40 ? `${Math.round(liqPct)}% locked ⚠️`  :
+    liqPct >  0  ? `Only ${Math.round(liqPct)}% locked ❌` : "Unknown ⚠️";
+
+  const holderLabel =
+    top10 >= 70 ? `Top 10 hold ${top10.toFixed(1)}% ❌` :
+    top10 >= 40 ? `Top 10 hold ${top10.toFixed(1)}% ⚠️` :
+    top10 >  0  ? `Top 10 hold ${top10.toFixed(1)}% ✅` : "Data unavailable";
+
+  const holderCountLabel =
+    holders >= 10_000 ? `${holders.toLocaleString()} holders ✅` :
+    holders >= 500    ? `${holders.toLocaleString()} holders ⚠️` :
+    holders > 0       ? `Only ${holders} holders ❌` : "Unknown";
+
+  const washLabel =
+    tok.washRiskLabel === "High"   ? "Wash trading detected ❌" :
+    tok.washRiskLabel === "Medium" ? "Some wash signals ⚠️"    : "Organic volume ✅";
+
   return {
     score, riskLevel: level,
     indicators: [
-      { name: "Liquidity Lock",  status: score < 35 ? "Locked ✅"  : score < 65 ? "Partial ⚠️" : "Unlocked ❌", risk: score > 55 },
-      { name: "Top Holders",     status: score < 30 ? "Healthy ✅" : score < 65 ? "Moderate ⚠️" : "Extreme ❌",  risk: score > 65 },
-      { name: "Authorities",     status: score < 35 ? "Revoked ✅" : score < 65 ? "Mixed ⚠️"    : "Active ❌",   risk: score > 55 },
-      { name: "Volume Pattern",  status: score > 75 ? "Artificial ❌" : score > 50 ? "Suspicious ⚠️" : "Organic ✅", risk: score > 50 }
+      { name: "LP Lock",         status: lpLabel,          risk: liqPct < 50 },
+      { name: "Concentration",   status: holderLabel,       risk: top10 >= 50 },
+      { name: "Holder Count",    status: holderCountLabel,  risk: holders < 500 },
+      { name: "Volume Pattern",  status: washLabel,         risk: tok.washRiskLabel === "High" }
     ],
-    flags: level === "High" ? ["Liquidity exposure", "Concentration risk", "Suspicious volume"]
-         : level === "Medium" ? ["Monitor LP lock", "Use tight stops"]
-         : ["Lower risk profile"]
+    flags: level === "High"
+      ? [
+          liqPct < 20 ? `LP barely locked (${Math.round(liqPct)}%)` : "Low LP security",
+          top10 >= 60 ? `${top10.toFixed(0)}% held by top 10` : "High concentration",
+          holders < 100 ? `Only ${holders} holders` : "Thin community"
+        ]
+      : level === "Medium"
+        ? ["Monitor LP lock closely", "Use tight stop-losses"]
+        : ["Relatively lower risk — DYOR always"]
   };
 }
 

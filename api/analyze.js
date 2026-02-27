@@ -336,29 +336,77 @@ export default async function handler(req, res) {
       devActivity.error = 'HELIUS_API_KEY not configured';
     }
 
-    // ==================== SCORING LOGIC (ENHANCED) ====================
-    
-    const liquidityScore =
-      liqTotal <= 0 ? 10 :
-      lpLockedPct >= 90 ? 90 :
-      lpLockedPct >= 60 ? 70 :
-      lpLockedPct >= 30 ? 50 : 35;
+    // ==================== SCORING LOGIC (CONTINUOUS + DATA-DRIVEN) ====================
 
-    const washTrading =
-      v24 > 0 && liqTotal > 0 && (v24 / liqTotal) > 25 ? 'High' :
-      v24 > 0 && liqTotal > 0 && (v24 / liqTotal) > 10 ? 'Medium' : 'Low';
+    // ── Liquidity score (0–100) ──────────────────────────────────
+    // Accounts for LP lock %, actual liquidity depth vs mcap, and authority flags
+    let liquidityScore;
+    if (liqTotal <= 0) {
+      liquidityScore = 5;
+    } else {
+      // LP lock: 0–45 pts
+      let liqBase = Math.round((Math.min(Number(lpLockedPct) || 0, 100) / 100) * 45);
+      // Depth vs market cap: up to 30 pts
+      if (mcap > 0) {
+        const depth = liqTotal / mcap;
+        liqBase += depth >= 0.5 ? 30 : depth >= 0.2 ? 22 : depth >= 0.05 ? 12 : depth >= 0.01 ? 4 : 0;
+      } else {
+        liqBase += liqTotal >= 1_000_000 ? 25 : liqTotal >= 100_000 ? 14 : liqTotal >= 10_000 ? 6 : 0;
+      }
+      liqBase += 20; // floor offset — some liquidity > none
+      if (mintAuth)   liqBase -= 15; // can print tokens → devalues LP
+      if (freezeAuth) liqBase -= 10; // can freeze wallets
+      liquidityScore = Math.max(5, Math.min(95, liqBase));
+    }
 
-    const volumeScore =
-      washTrading === 'Low' ? 85 :
-      washTrading === 'Medium' ? 65 : 45;
+    // ── Wash-trading ratio ───────────────────────────────────────
+    const washVolRatio = (v24 > 0 && liqTotal > 0) ? v24 / liqTotal : 0;
+    const washTrading  =
+      washVolRatio > 25 ? 'High' :
+      washVolRatio > 10 ? 'Medium' : 'Low';
 
+    // ── Volume score (0–100) ─────────────────────────────────────
+    let volumeScore;
+    if (v24 === 0) {
+      volumeScore = 20; // zero volume = dead/illiquid
+    } else {
+      let volBase = 52;
+      // Wash trading penalty
+      if      (washVolRatio > 50) volBase -= 32;
+      else if (washVolRatio > 25) volBase -= 22;
+      else if (washVolRatio > 10) volBase -= 12;
+      else                        volBase += 16; // organic bonus
+      // Volume / mcap sweet spot (2–50%): healthy activity
+      if (mcap > 0) {
+        const vm = v24 / mcap;
+        if      (vm >= 0.02 && vm <= 0.5) volBase += 12;
+        else if (vm > 0.5)                volBase -= 6;  // suspiciously high
+        else if (vm < 0.002)              volBase -= 10; // dangerously thin
+      }
+      volumeScore = Math.max(5, Math.min(95, Math.round(volBase)));
+    }
+
+    // ── Concentration label (for display) ───────────────────────
     const concentration =
       top10Pct >= 80 ? 'Extreme' :
       top10Pct >= 45 ? 'Moderate' : 'Healthy';
 
-    const holderScore =
-      concentration === 'Healthy' ? 85 :
-      concentration === 'Moderate' ? 60 : 35;
+    // ── Holder score (0–100) ─────────────────────────────────────
+    // Base = inverse of top-10 concentration, then penalise thin holder counts
+    let holderScore = Math.round(100 - (Number(top10Pct) || 0));
+    // Holder count penalties — 3 holders is terrible regardless of concentration %
+    if      (totalHolders <= 0)     holderScore -= 65;
+    else if (totalHolders < 10)     holderScore -= 58;
+    else if (totalHolders < 50)     holderScore -= 42;
+    else if (totalHolders < 200)    holderScore -= 28;
+    else if (totalHolders < 500)    holderScore -= 16;
+    else if (totalHolders < 2_000)  holderScore -=  6;
+    else if (totalHolders >= 50_000) holderScore +=  8;
+    // Dev holding penalty
+    if      (devPct > 25) holderScore -= 25;
+    else if (devPct > 15) holderScore -= 15;
+    else if (devPct > 10) holderScore -=  8;
+    holderScore = Math.max(5, Math.min(92, holderScore));
 
     const sentimentScore = sentimentData.available ? sentimentData.score : 50;
 
@@ -369,9 +417,9 @@ export default async function handler(req, res) {
       devActivityPenalty = 10;
     }
 
-    const overall = Math.max(0, Math.round(
-      (liquidityScore * 0.3 + volumeScore * 0.25 + holderScore * 0.25 + sentimentScore * 0.2) - devActivityPenalty
-    ));
+    const overall = Math.max(0, Math.min(100, Math.round(
+      (liquidityScore * 0.30 + volumeScore * 0.25 + holderScore * 0.25 + sentimentScore * 0.20) - devActivityPenalty
+    )));
 
     const summary =
       overall >= 80
