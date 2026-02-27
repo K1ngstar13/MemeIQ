@@ -30,7 +30,8 @@ export default async function handler(req, res) {
       liq:      `https://public-api.birdeye.so/defi/v3/token/exit-liquidity?address=${encodeURIComponent(address)}`,
       security: `https://public-api.birdeye.so/defi/v1/token/security?address=${encodeURIComponent(address)}`,
       // Use token_overview for holders - it's more reliable
-      metadata: `https://public-api.birdeye.so/defi/v3/token/meta-data?address=${encodeURIComponent(address)}`
+      metadata: `https://public-api.birdeye.so/defi/v3/token/meta-data?address=${encodeURIComponent(address)}`,
+      topHolders: `https://public-api.birdeye.so/defi/v3/token/holder?address=${encodeURIComponent(address)}&offset=0&limit=20`
     };
 
     // 7d OHLCV
@@ -38,13 +39,14 @@ export default async function handler(req, res) {
     const from = now - 60 * 60 * 24 * 7;
     urls.ohlcv = `https://public-api.birdeye.so/defi/v3/ohlcv?address=${encodeURIComponent(address)}&type=1D&time_from=${from}&time_to=${now}`;
 
-    const [overviewR, marketR, liqR, secR, metadataR, ohlcvR] = await Promise.allSettled([
-      fetch(urls.overview, { headers }),
-      fetch(urls.market,   { headers }),
-      fetch(urls.liq,      { headers }),
-      fetch(urls.security, { headers }),
-      fetch(urls.metadata, { headers }),
-      fetch(urls.ohlcv,    { headers })
+    const [overviewR, marketR, liqR, secR, metadataR, ohlcvR, holdersListR] = await Promise.allSettled([
+      fetch(urls.overview,    { headers }),
+      fetch(urls.market,      { headers }),
+      fetch(urls.liq,         { headers }),
+      fetch(urls.security,    { headers }),
+      fetch(urls.metadata,    { headers }),
+      fetch(urls.ohlcv,       { headers }),
+      fetch(urls.topHolders,  { headers })
     ]);
 
     async function safeJson(pr) {
@@ -76,12 +78,13 @@ export default async function handler(req, res) {
       }
     }
 
-    const overview = await safeJson(overviewR);
-    const market   = await safeJson(marketR);
-    const liq      = await safeJson(liqR);
-    const security = await safeJson(secR);
-    const metadata = await safeJson(metadataR);
-    const ohlcv    = await safeJson(ohlcvR);
+    const overview    = await safeJson(overviewR);
+    const market      = await safeJson(marketR);
+    const liq         = await safeJson(liqR);
+    const security    = await safeJson(secR);
+    const metadata    = await safeJson(metadataR);
+    const ohlcv       = await safeJson(ohlcvR);
+    const holdersList = await safeJson(holdersListR);
 
     if (!overview?.data) {
       console.error('Birdeye overview response:', JSON.stringify(overview, null, 2));
@@ -377,6 +380,23 @@ export default async function handler(req, res) {
           ? `Mixed signals: proceed with caution. ${devActivity.suspiciousActivity ? 'Dev has been selling recently.' : 'Watch LP lock % and top holders.'}`
           : `High risk: ${devActivity.suspiciousActivity ? 'Dev actively selling + ' : ''}weak liquidity/lock or high concentration. Avoid large positions.`;
 
+    // ==================== TOP HOLDERS (REAL ADDRESSES) ====================
+    let topHolders = [];
+    const holderItems = holdersList?.data?.items || holdersList?.data || [];
+    if (Array.isArray(holderItems) && holderItems.length > 0) {
+      topHolders = holderItems.slice(0, 20).map((h, i) => {
+        let pct = Number(h.percentage ?? 0);
+        // Birdeye returns 0–1 range; normalise to 0–100
+        if (pct > 0 && pct <= 1) pct = pct * 100;
+        return {
+          rank:      i + 1,
+          address:   h.owner || h.address || '',
+          pct:       Number(pct.toFixed(4)),
+          uiAmount:  Number(h.uiAmount || 0)
+        };
+      });
+    }
+
     // ==================== PRICE HISTORY ====================
     let priceHistory = [];
     const candles = ohlcv?.data?.items || ohlcv?.data?.data || ohlcv?.data || null;
@@ -510,6 +530,9 @@ export default async function handler(req, res) {
       // NEW: Sentiment & Dev Activity
       sentiment: sentimentData,
       devActivity: devActivity,
+
+      // Top holders with real addresses (from Birdeye)
+      topHolders,
 
       // For AI analysis (if you use it)
       summaryForAI: `${name} (${symbol}): Overall score ${overall}/100. Liquidity: ${liquidityScore}/100 (${lpLockedPct}% locked). Volume: ${volumeScore}/100 (wash risk: ${washTrading}). Holders: ${holderScore}/100 (${concentration} concentration, top 10 hold ${top10Pct}%). New buyers (24h): ${newBuyers24h}. Holder growth: ${estimatedGrowth24h}% (24h), ${estimatedGrowth7d}% (7d). ${devActivity.suspiciousActivity ? 'Dev has been selling recently.' : 'No recent dev sells.'} ${sentimentData.available ? `Social sentiment: ${sentimentData.bullish}% bullish.` : ''}`

@@ -520,220 +520,366 @@ function initChart(points) {
 }
 
 // ============================================================
-//  Bubble Map — iNSIGHTX-Style Packed Scatter
+//  Bubble Map — iNSIGHTX-Style: hollow = holder, filled = cluster
 // ============================================================
 function renderBubbleMap(t) {
   if (bubbleAnimFrame) { cancelAnimationFrame(bubbleAnimFrame); bubbleAnimFrame = null; }
+  // Close any open holder detail modal from previous coin
+  document.getElementById("holderDetailModal")?.remove();
 
-  const container  = document.getElementById("bubbleMapContainer");
-  const canvas     = document.getElementById("bubbleMapCanvas");
-  const listEl     = document.getElementById("holderList");
+  const container = document.getElementById("bubbleMapContainer");
+  const canvas    = document.getElementById("bubbleMapCanvas");
+  const listEl    = document.getElementById("holderList");
   if (!container || !canvas) return;
 
-  // Measure real dimensions (container must be visible)
   const W = container.clientWidth  || 400;
   const H = container.clientHeight || 300;
   canvas.width  = W;
   canvas.height = H;
-  const ctx = canvas.getContext("2d");
 
-  // ── Build holder distribution from API data ──────────────────
-  const top10 = Math.max(1, Math.min(100, Number(t.top10Pct) || 30));
-  const conc  = t.concentrationLabel || "Moderate";
-  const comm  = Math.max(0, 100 - top10);
+  // ── Cluster color palette (iNSIGHTX style) ──────────────────
+  const CLUSTER_COLORS = [
+    [ 52, 211, 153],   // emerald
+    [251, 191,  36],   // amber
+    [236,  72, 153]    // pink
+  ];
 
-  // Distribute top-10 holdings with realistic relative sizes
-  const top1Share = conc === "Extreme" ? 0.36 : conc === "Moderate" ? 0.27 : 0.21;
-  const rawWeights = [top1Share, 0.19, 0.13, 0.10, 0.09, 0.08, 0.06, 0.05, 0.04, 0.02];
-  const wSum = rawWeights.reduce((a, b) => a + b, 0);
-  const topShares = rawWeights.map(w => (w / wSum) * top10);
+  // ── Build holder list from real API data or synthetic ────────
+  const rawHolders = (t.topHolders && t.topHolders.length > 0)
+    ? t.topHolders.slice(0, 20)
+    : buildSyntheticHolders(t);
 
-  // Color definitions per tier
-  const TIER_COLOR = {
-    dex:       [251, 191,  36],   // gold
-    whale:     [251, 146,  60],   // orange
-    top:       [ 99, 102, 241],   // indigo
-    mid:       [ 34, 211, 238],   // cyan
-    community: [ 60,  70,  95]    // dark slate (outline-only)
-  };
+  // Assign visual roles: top 2 = whale hollow, 3-5 = top hollow,
+  // 6-8 = cluster A filled, 9-11 = cluster B filled, 12-14 = cluster C filled,
+  // 15+ = community hollow
+  const holders = rawHolders.map((h, i) => {
+    const rank = h.rank || (i + 1);
+    let type, clusterGroup, style, color;
 
-  const TIER_LABELS = ["DEX / LP Pool", "Whale", "Whale", "Top Holder", "Top Holder",
-                       "Top Holder", "Top Holder", "Holder", "Holder", "Holder"];
-  const TIER_TYPES  = ["dex","whale","whale","top","top","top","top","mid","mid","mid"];
+    if (rank <= 2) {
+      type = "whale"; style = "hollow"; clusterGroup = null;
+      color = [220, 225, 255];
+    } else if (rank <= 5) {
+      type = "top"; style = "hollow"; clusterGroup = null;
+      color = [160, 175, 230];
+    } else if (rank <= 8) {
+      type = "cluster"; style = "filled"; clusterGroup = 0;
+      color = CLUSTER_COLORS[0];
+    } else if (rank <= 11) {
+      type = "cluster"; style = "filled"; clusterGroup = 1;
+      color = CLUSTER_COLORS[1];
+    } else if (rank <= 14) {
+      type = "cluster"; style = "filled"; clusterGroup = 2;
+      color = CLUSTER_COLORS[2];
+    } else {
+      type = "community"; style = "hollow"; clusterGroup = null;
+      color = [80, 95, 130];
+    }
 
-  const holders = topShares.map((pct, i) => ({
-    rank: i + 1,
-    pct,
-    label:  TIER_LABELS[i],
-    type:   TIER_TYPES[i],
-    color:  TIER_COLOR[TIER_TYPES[i]],
-    filled: true
-  }));
+    const addr = h.address || "";
+    const shortAddr = addr.length > 12
+      ? `${addr.slice(0, 6)}...${addr.slice(-4)}`
+      : (addr || `#${rank}`);
 
-  // Community bubbles (outlined, scattered)
-  let commLeft = comm;
-  const numComm = 24;
-  const commSlice = comm / numComm;
-  for (let i = 0; i < numComm && commLeft > 0.01; i++) {
-    const pct = commSlice * (0.55 + Math.random() * 0.9);
-    const actual = Math.min(pct, commLeft);
-    holders.push({ rank: 11 + i, pct: actual, label: "Community", type: "community", color: TIER_COLOR.community, filled: false });
-    commLeft -= actual;
-  }
-
-  // ── Scale radii ──────────────────────────────────────────────
-  const maxPct = Math.max(...holders.map(h => h.pct));
-  const maxR = Math.min(W * 0.095, H * 0.19, 34);
-  const minR = 3.5;
-  holders.forEach(h => {
-    h.r    = minR + Math.sqrt(h.pct / maxPct) * (maxR - minR);
-    h.phase = Math.random() * Math.PI * 2;
-    h.speed = 0.004 + Math.random() * 0.006;
-    h.amp   = 1.5 + Math.random() * 2.5;
+    return {
+      rank, pct: h.pct, uiAmount: h.uiAmount || 0,
+      address: addr, shortAddr,
+      type, clusterGroup, style, color,
+      r: 0, ox: 0, oy: 0, cx: 0, cy: 0,
+      phase: Math.random() * Math.PI * 2,
+      speed: 0.003 + Math.random() * 0.005,
+      amp:   style === "filled" ? 0.6 : 1.2 + Math.random() * 2
+    };
   });
 
-  // ── Pack bubbles (collision avoidance, large-first) ─────────
-  const PAD = 2;
+  // Add community scatter bubbles to fill canvas visually
+  const top10sum = holders.reduce((s, h) => s + h.pct, 0);
+  const commPct  = Math.max(0, 100 - top10sum);
+  const numComm  = 18;
+  for (let i = 0; i < numComm; i++) {
+    const pct = (commPct / numComm) * (0.4 + Math.random() * 1.2);
+    holders.push({
+      rank: holders.length + 1, pct, uiAmount: 0,
+      address: "", shortAddr: "holder…",
+      type: "community", clusterGroup: null, style: "hollow",
+      color: [65, 80, 115],
+      r: 0, ox: 0, oy: 0, cx: 0, cy: 0,
+      phase: Math.random() * Math.PI * 2,
+      speed: 0.002 + Math.random() * 0.004,
+      amp: 1 + Math.random() * 1.8
+    });
+  }
+
+  // ── Assign radii ─────────────────────────────────────────────
+  const maxPct     = Math.max(...holders.map(h => h.pct), 1);
+  const hollowMaxR = Math.min(W * 0.13, H * 0.22, 55);
+  holders.forEach(h => {
+    h.r = h.style === "filled"
+      ? 4 + Math.sqrt(h.pct / maxPct) * 9            // cluster: 4–13 px
+      : 7 + Math.sqrt(h.pct / maxPct) * (hollowMaxR - 7); // hollow: 7–55 px
+  });
+
+  // ── Pack bubbles (largest first, collision avoidance) ────────
+  const PAD = 3;
   const placed = [];
   [...holders].sort((a, b) => b.r - a.r).forEach(b => {
     let ok = false;
-    for (let try_ = 0; try_ < 500; try_++) {
+    for (let t_ = 0; t_ < 600; t_++) {
       const x = b.r + PAD + Math.random() * (W - 2 * b.r - 2 * PAD);
       const y = b.r + PAD + Math.random() * (H - 2 * b.r - 2 * PAD);
-      const collides = placed.some(p => {
+      if (!placed.some(p => {
         const dx = x - p.ox, dy = y - p.oy;
         return dx * dx + dy * dy < (p.r + b.r + PAD) ** 2;
-      });
-      if (!collides) { b.ox = x; b.oy = y; ok = true; break; }
+      })) { b.ox = x; b.oy = y; ok = true; break; }
     }
-    if (!ok) { b.ox = b.r + Math.random() * Math.max(1, W - 2 * b.r); b.oy = b.r + Math.random() * Math.max(1, H - 2 * b.r); }
+    if (!ok) {
+      b.ox = b.r + PAD + Math.random() * Math.max(1, W - 2 * b.r - 2 * PAD);
+      b.oy = b.r + PAD + Math.random() * Math.max(1, H - 2 * b.r - 2 * PAD);
+    }
     b.cx = b.ox; b.cy = b.oy;
     placed.push(b);
   });
 
-  // ── Populate right holder list ───────────────────────────────
+  // ── Right panel — real addresses + color-coded cluster rows ──
   if (listEl) {
+    const listRows = holders.filter(h => h.rank <= rawHolders.length);
     listEl.innerHTML =
-      `<div class="text-[10px] text-gray-600 uppercase tracking-wider px-2 pb-1.5 border-b border-gray-800/60 mb-1 font-semibold shrink-0">
-         Top Holders
-       </div>` +
-      holders.slice(0, 15).map(h => {
-        const [r, g, bv] = h.color;
+      `<div class="text-[10px] text-gray-600 uppercase tracking-wider px-2 pb-1.5 border-b border-gray-800/60 mb-1 font-semibold shrink-0">Top Holders</div>` +
+      listRows.map(h => {
+        const [rv, gv, bv] = h.color;
+        const isCl = h.style === "filled";
         return `
-        <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-gray-800/50 transition-colors cursor-default text-[11px] shrink-0">
+        <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-lg cursor-pointer transition-colors text-[11px] shrink-0 holder-row"
+             style="${isCl ? `background:rgba(${rv},${gv},${bv},0.06);border:1px solid rgba(${rv},${gv},${bv},0.2)` : "border:1px solid transparent"}"
+             data-rank="${h.rank}">
           <span class="text-gray-700 w-4 text-right font-mono text-[10px] shrink-0">#${h.rank}</span>
-          <span class="w-2 h-2 rounded-full shrink-0 border" style="background:rgba(${r},${g},${bv},${h.filled ? 0.8 : 0.25});border-color:rgba(${r},${g},${bv},0.6)"></span>
-          <span class="flex-1 text-gray-400 truncate">${h.label}</span>
+          <span class="w-2.5 h-2.5 rounded-full shrink-0 ${isCl ? "" : "border"}"
+                style="${isCl ? `background:rgba(${rv},${gv},${bv},0.9)` : `border-color:rgba(${rv},${gv},${bv},0.5)`}"></span>
+          <span class="flex-1 text-gray-400 truncate font-mono">${h.shortAddr}</span>
           <span class="font-bold text-gray-200 shrink-0 font-mono text-[10px]">${h.pct.toFixed(2)}%</span>
         </div>`;
       }).join("") +
-      `<div class="mt-2 px-2 text-[10px] text-gray-700 italic leading-relaxed">
-         Est. distribution from on-chain metrics
-       </div>`;
+      (!t.topHolders?.length
+        ? `<div class="mt-2 px-2 text-[10px] text-gray-700 italic leading-relaxed">Est. distribution — Birdeye API for real addresses</div>`
+        : "");
+
+    listEl.querySelectorAll("[data-rank]").forEach(row => {
+      row.addEventListener("click", () => {
+        const rank = parseInt(row.dataset.rank);
+        const h = holders.find(x => x.rank === rank);
+        if (h) showHolderDetail(h);
+      });
+    });
   }
 
-  // ── Tooltip ─────────────────────────────────────────────────
+  // ── Clone canvas to remove stale event listeners ─────────────
+  const newCanvas = canvas.cloneNode(true);
+  newCanvas.width  = W;
+  newCanvas.height = H;
+  canvas.parentNode.replaceChild(newCanvas, canvas);
+  const ctx = newCanvas.getContext("2d");
+
+  // ── Tooltip ──────────────────────────────────────────────────
   const tooltip = document.getElementById("bubbleTooltip");
-  const onMove = e => {
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    const hit = holders.find(h => {
-      const dx = mx - h.cx, dy = my - h.cy;
-      return dx * dx + dy * dy < h.r * h.r;
-    });
+  const hitTest = (mx, my) => holders.find(h => {
+    const dx = mx - h.cx, dy = my - h.cy;
+    return dx * dx + dy * dy <= (h.r + 3) * (h.r + 3);
+  });
+
+  newCanvas.addEventListener("mousemove", e => {
+    const rect  = newCanvas.getBoundingClientRect();
+    const scaleX = W / rect.width, scaleY = H / rect.height;
+    const mx = (e.clientX - rect.left) * scaleX;
+    const my = (e.clientY - rect.top)  * scaleY;
+    const hit = hitTest(mx, my);
     if (hit && tooltip) {
-      tooltip.innerHTML = `<strong class="text-gray-100">#${hit.rank} ${hit.label}</strong><br><span class="text-gray-400">${hit.pct.toFixed(3)}% of supply</span>`;
-      tooltip.style.left = `${Math.min(mx + 14, W - 160)}px`;
-      tooltip.style.top  = `${Math.max(4, my - 48)}px`;
+      const [rv, gv, bv] = hit.color;
+      tooltip.innerHTML = `
+        <div class="font-mono text-[11px] font-semibold text-gray-100">#${hit.rank}&nbsp;&nbsp;${hit.shortAddr}</div>
+        <div class="text-gray-400 text-[10px] mt-0.5">${hit.pct.toFixed(4)}% of supply</div>
+        ${hit.clusterGroup !== null ? `<div class="text-[9px] mt-0.5" style="color:rgba(${rv},${gv},${bv},0.9)">Cluster ${String.fromCharCode(65 + hit.clusterGroup)}</div>` : ""}
+        <div class="text-gray-600 text-[9px] mt-0.5">Click to inspect</div>`;
+      tooltip.style.left = `${Math.min(mx + 14, W - 175)}px`;
+      tooltip.style.top  = `${Math.max(4, my - 60)}px`;
       tooltip.classList.remove("hidden");
+      newCanvas.style.cursor = "pointer";
     } else {
       tooltip?.classList.add("hidden");
+      newCanvas.style.cursor = "default";
     }
-  };
-  // Remove old listeners before adding new ones
-  const newCanvas = canvas.cloneNode(true);
-  canvas.parentNode.replaceChild(newCanvas, canvas);
-  newCanvas.addEventListener("mousemove", onMove);
-  newCanvas.addEventListener("mouseleave", () => tooltip?.classList.add("hidden"));
+  });
 
-  // Re-get context on the fresh canvas
-  const ctx2 = newCanvas.getContext("2d");
+  newCanvas.addEventListener("mouseleave", () => {
+    tooltip?.classList.add("hidden");
+    newCanvas.style.cursor = "default";
+  });
 
-  // ── Draw loop ────────────────────────────────────────────────
+  newCanvas.addEventListener("click", e => {
+    const rect  = newCanvas.getBoundingClientRect();
+    const scaleX = W / rect.width, scaleY = H / rect.height;
+    const mx = (e.clientX - rect.left) * scaleX;
+    const my = (e.clientY - rect.top)  * scaleY;
+    const hit = hitTest(mx, my);
+    if (hit) showHolderDetail(hit);
+  });
+
+  // ── Animated draw loop ────────────────────────────────────────
   function draw() {
-    ctx2.clearRect(0, 0, W, H);
+    ctx.clearRect(0, 0, W, H);
 
-    // Subtle grid
-    ctx2.strokeStyle = "rgba(99,102,241,0.04)";
-    ctx2.lineWidth = 1;
-    for (let gx = 0; gx <= W; gx += 48) { ctx2.beginPath(); ctx2.moveTo(gx, 0); ctx2.lineTo(gx, H); ctx2.stroke(); }
-    for (let gy = 0; gy <= H; gy += 48) { ctx2.beginPath(); ctx2.moveTo(0, gy); ctx2.lineTo(W, gy); ctx2.stroke(); }
+    // Dot-grid background
+    ctx.fillStyle = "rgba(99,102,241,0.018)";
+    for (let gx = 25; gx < W; gx += 32)
+      for (let gy = 25; gy < H; gy += 32) {
+        ctx.beginPath(); ctx.arc(gx, gy, 0.8, 0, Math.PI * 2); ctx.fill();
+      }
 
+    // Cluster connecting lines (drawn UNDER bubbles)
+    [0, 1, 2].forEach(gi => {
+      const grp = holders.filter(h => h.clusterGroup === gi);
+      if (grp.length < 2) return;
+      const [rv, gv, bv] = CLUSTER_COLORS[gi];
+      ctx.save();
+      ctx.strokeStyle = `rgba(${rv},${gv},${bv},0.22)`;
+      ctx.lineWidth = 0.75;
+      ctx.setLineDash([3, 5]);
+      for (let a = 0; a < grp.length; a++)
+        for (let b = a + 1; b < grp.length; b++) {
+          ctx.beginPath();
+          ctx.moveTo(grp[a].cx, grp[a].cy);
+          ctx.lineTo(grp[b].cx, grp[b].cy);
+          ctx.stroke();
+        }
+      ctx.setLineDash([]);
+      ctx.restore();
+    });
+
+    // Bubbles
     holders.forEach(h => {
       h.phase += h.speed;
       h.cx = h.ox + Math.cos(h.phase * 0.71) * h.amp;
       h.cy = h.oy + Math.sin(h.phase)         * h.amp;
+      const [rv, gv, bv] = h.color;
 
-      const [r, g, bv] = h.color;
-
-      if (!h.filled) {
-        // Community: outline only (iNSIGHTX style)
-        ctx2.beginPath();
-        ctx2.arc(h.cx, h.cy, h.r, 0, Math.PI * 2);
-        ctx2.strokeStyle = `rgba(${r},${g},${bv},0.3)`;
-        ctx2.lineWidth = 1;
-        ctx2.stroke();
-        ctx2.fillStyle = `rgba(${r},${g},${bv},0.04)`;
-        ctx2.fill();
-      } else {
-        // Top holders: glow + filled gradient + shine
-        // Outer glow halo
-        const halo = ctx2.createRadialGradient(h.cx, h.cy, 0, h.cx, h.cy, h.r * 2.2);
-        halo.addColorStop(0, `rgba(${r},${g},${bv},0.14)`);
-        halo.addColorStop(1, "transparent");
-        ctx2.beginPath(); ctx2.arc(h.cx, h.cy, h.r * 2.2, 0, Math.PI * 2);
-        ctx2.fillStyle = halo; ctx2.fill();
-
-        // Main fill
-        const fill = ctx2.createRadialGradient(
-          h.cx - h.r * 0.28, h.cy - h.r * 0.28, 0,
-          h.cx, h.cy, h.r
-        );
-        fill.addColorStop(0, `rgba(${r},${g},${bv},0.92)`);
-        fill.addColorStop(0.65, `rgba(${r},${g},${bv},0.68)`);
-        fill.addColorStop(1, `rgba(${r},${g},${bv},0.38)`);
-        ctx2.beginPath(); ctx2.arc(h.cx, h.cy, h.r, 0, Math.PI * 2);
-        ctx2.fillStyle = fill; ctx2.fill();
-
-        // Border
-        ctx2.strokeStyle = `rgba(${r},${g},${bv},0.65)`;
-        ctx2.lineWidth = 1.5; ctx2.stroke();
-
-        // Sheen
-        const shine = ctx2.createRadialGradient(
-          h.cx - h.r * 0.32, h.cy - h.r * 0.38, 0,
-          h.cx - h.r * 0.08, h.cy - h.r * 0.08, h.r * 0.75
-        );
-        shine.addColorStop(0, "rgba(255,255,255,0.25)");
-        shine.addColorStop(1, "transparent");
-        ctx2.beginPath(); ctx2.arc(h.cx, h.cy, h.r, 0, Math.PI * 2);
-        ctx2.fillStyle = shine; ctx2.fill();
-
-        // Percentage label inside bubble (if big enough)
-        if (h.r >= 15) {
-          ctx2.textAlign = "center";
-          ctx2.textBaseline = "middle";
-          ctx2.font = `bold ${Math.max(8, Math.floor(h.r * 0.42))}px 'JetBrains Mono',monospace`;
-          ctx2.fillStyle = "rgba(255,255,255,0.95)";
-          ctx2.fillText(`${h.pct.toFixed(1)}%`, h.cx, h.cy);
+      if (h.style === "hollow") {
+        // ── Large hollow circle — iNSIGHTX style ──
+        const strokeAlpha = h.type === "whale" ? 0.7 : h.type === "top" ? 0.5 : 0.18;
+        const strokeW     = h.type === "whale" ? 1.8 : h.type === "top" ? 1.4 : 0.9;
+        ctx.beginPath();
+        ctx.arc(h.cx, h.cy, h.r, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(${rv},${gv},${bv},${strokeAlpha})`;
+        ctx.lineWidth   = strokeW;
+        ctx.stroke();
+        ctx.fillStyle   = `rgba(${rv},${gv},${bv},0.02)`;
+        ctx.fill();
+        // % label inside larger named holders
+        if (h.r >= 17 && h.type !== "community") {
+          ctx.textAlign    = "center";
+          ctx.textBaseline = "middle";
+          ctx.font = `${Math.max(7, Math.floor(h.r * 0.30))}px 'JetBrains Mono',monospace`;
+          ctx.fillStyle = `rgba(${rv},${gv},${bv},0.65)`;
+          ctx.fillText(`${h.pct.toFixed(1)}%`, h.cx, h.cy);
         }
+      } else {
+        // ── Small filled cluster bubble ──
+        // Outer glow
+        const glow = ctx.createRadialGradient(h.cx, h.cy, 0, h.cx, h.cy, h.r * 2.8);
+        glow.addColorStop(0, `rgba(${rv},${gv},${bv},0.22)`);
+        glow.addColorStop(1, "transparent");
+        ctx.beginPath();
+        ctx.arc(h.cx, h.cy, h.r * 2.8, 0, Math.PI * 2);
+        ctx.fillStyle = glow; ctx.fill();
+        // Solid fill
+        ctx.beginPath();
+        ctx.arc(h.cx, h.cy, h.r, 0, Math.PI * 2);
+        ctx.fillStyle   = `rgba(${rv},${gv},${bv},0.88)`;
+        ctx.fill();
+        ctx.strokeStyle = `rgba(${rv},${gv},${bv},0.95)`;
+        ctx.lineWidth   = 1;
+        ctx.stroke();
       }
     });
 
     bubbleAnimFrame = requestAnimationFrame(draw);
   }
   draw();
+}
+
+// ── Synthetic holder distribution (no real data) ─────────────
+function buildSyntheticHolders(t) {
+  const top10    = Math.max(1, Math.min(100, Number(t.top10Pct) || 30));
+  const conc     = t.concentrationLabel || "Moderate";
+  const top1Share = conc === "Extreme" ? 0.36 : conc === "Moderate" ? 0.27 : 0.21;
+  const rawW     = [top1Share, 0.19, 0.13, 0.10, 0.09, 0.08, 0.06, 0.05, 0.04, 0.02];
+  const wSum     = rawW.reduce((a, b) => a + b, 0);
+  return rawW.map((w, i) => ({
+    rank: i + 1,
+    address: "",
+    pct: (w / wSum) * top10,
+    uiAmount: 0
+  }));
+}
+
+// ── Holder detail modal (shown on bubble/row click) ───────────
+function showHolderDetail(h) {
+  document.getElementById("holderDetailModal")?.remove();
+  const [rv, gv, bv] = h.color;
+  const isCl  = h.style === "filled";
+  const cStr  = `rgba(${rv},${gv},${bv},1)`;
+  const label = isCl
+    ? `Cluster ${String.fromCharCode(65 + h.clusterGroup)} Member`
+    : h.type === "whale" ? "Whale Wallet"
+    : h.type === "top"   ? "Top Holder"
+    : "Holder";
+
+  const modal = document.createElement("div");
+  modal.id = "holderDetailModal";
+  modal.className = "absolute inset-0 flex items-center justify-center z-20 rounded-xl";
+  modal.style.background = "rgba(4,8,19,0.75)";
+  modal.style.backdropFilter = "blur(4px)";
+  modal.innerHTML = `
+    <div class="glass-panel rounded-2xl p-5 w-60 border relative" style="border-color:rgba(${rv},${gv},${bv},0.35)">
+      <button id="closeHolderModal" class="absolute top-3 right-3 text-gray-500 hover:text-gray-200 text-xl leading-none transition-colors">&times;</button>
+      <div class="flex items-center gap-2.5 mb-3.5">
+        <div class="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+             style="${isCl ? `background:rgba(${rv},${gv},${bv},0.15);border:2px solid ${cStr}` : `border:2px solid ${cStr};background:transparent`}">
+          <span class="text-xs font-bold" style="color:${cStr}">#${h.rank}</span>
+        </div>
+        <div>
+          <div class="text-xs font-bold text-gray-200">${label}</div>
+          <div class="text-[10px] mt-0.5" style="color:rgba(${rv},${gv},${bv},0.7)">
+            ${isCl ? `Cluster ${String.fromCharCode(65 + h.clusterGroup)}` : `Rank #${h.rank}`}
+          </div>
+        </div>
+      </div>
+      <div class="text-[11px] divide-y divide-gray-800/60">
+        <div class="flex justify-between py-2">
+          <span class="text-gray-500">Address</span>
+          <span class="font-mono text-gray-300 text-[10px] ml-2 truncate max-w-[108px]" title="${h.address}">${h.shortAddr}</span>
+        </div>
+        <div class="flex justify-between py-2">
+          <span class="text-gray-500">% of Supply</span>
+          <span class="font-bold" style="color:${cStr}">${h.pct.toFixed(4)}%</span>
+        </div>
+        ${h.uiAmount > 0 ? `<div class="flex justify-between py-2">
+          <span class="text-gray-500">Tokens</span>
+          <span class="font-mono text-gray-300 text-[10px]">${h.uiAmount.toLocaleString(undefined,{maximumFractionDigits:0})}</span>
+        </div>` : ""}
+      </div>
+      ${h.address && h.address.length > 20
+        ? `<button onclick="window.open('https://solscan.io/account/${h.address}','_blank')"
+                  class="w-full mt-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all hover:opacity-90"
+                  style="background:rgba(${rv},${gv},${bv},0.12);color:${cStr};border:1px solid rgba(${rv},${gv},${bv},0.3)">
+             View on Solscan ↗
+           </button>`
+        : ""}
+    </div>`;
+
+  const container = document.getElementById("bubbleMapContainer");
+  if (!container) return;
+  container.appendChild(modal);
+  modal.addEventListener("click", e => { if (e.target === modal) modal.remove(); });
+  document.getElementById("closeHolderModal")?.addEventListener("click", () => modal.remove());
 }
 
 // ============================================================
