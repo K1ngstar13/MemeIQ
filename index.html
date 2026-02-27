@@ -198,13 +198,16 @@
       <!-- ── METRICS GRID ── -->
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 
-        <!-- Price Action -->
-        <div class="metric-card rounded-xl p-5 animate-fade-in" style="animation-delay:0.08s">
-          <h3 class="text-[10px] font-semibold text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-1.5">
-            <i data-lucide="trending-up" class="w-3.5 h-3.5 text-indigo-400"></i>
-            Price Action
-          </h3>
-          <div class="grid grid-cols-2 gap-3">
+        <!-- Price Action / Volume -->
+        <div class="metric-card rounded-xl p-5 animate-fade-in border-l-2 border-l-violet-500" style="animation-delay:0.08s">
+          <div class="flex justify-between items-start mb-4">
+            <h3 class="text-[10px] font-semibold text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
+              <i data-lucide="trending-up" class="w-3.5 h-3.5 text-violet-400"></i>
+              Volume &amp; Price
+            </h3>
+            <span id="volumeScore" class="text-base font-black text-violet-400">--/100</span>
+          </div>
+          <div class="grid grid-cols-2 gap-3 mb-4">
             <div>
               <p class="text-[10px] text-gray-600 mb-0.5">Market Cap</p>
               <p id="marketCap" class="text-sm font-bold mono text-gray-200">$0</p>
@@ -222,9 +225,12 @@
               <p id="buySellRatio" class="text-sm font-bold text-gray-200">--</p>
             </div>
           </div>
-          <div class="mt-3 pt-3 border-t border-gray-800/50 flex justify-between text-xs">
+          <div class="mt-1 mb-3 flex justify-between text-xs">
             <span class="text-gray-600">Wash Trading Risk</span>
             <span id="washTradingRisk" class="px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">--</span>
+          </div>
+          <div class="progress-bar-track h-2">
+            <div id="volumeBar" class="progress-bar-fill bg-gradient-to-r from-violet-600 to-violet-400" style="width:0%"></div>
           </div>
         </div>
 

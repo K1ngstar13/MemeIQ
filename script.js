@@ -341,6 +341,22 @@ function renderResults(t) {
   document.getElementById("volume24h").textContent   = fmtUSD(t.volume24hUSD);
   document.getElementById("buySellRatio").textContent = t.buySellRatio ? `${Number(t.buySellRatio).toFixed(2)}:1` : "--";
 
+  // Volume score + bar + color
+  const vs = t.scores?.volume ?? 0;
+  const vsEl = document.getElementById("volumeScore");
+  if (vsEl) {
+    vsEl.textContent = `${vs}/100`;
+    vsEl.className = `text-base font-black ${vs > 70 ? "text-emerald-400" : vs > 40 ? "text-yellow-400" : "text-red-400"}`;
+  }
+  const vb = document.getElementById("volumeBar");
+  if (vb) {
+    vb.style.width = `${vs}%`;
+    vb.className   = `progress-bar-fill h-full rounded-full transition-all duration-1000 bg-gradient-to-r ${
+      vs > 70 ? "from-emerald-600 to-emerald-400" :
+      vs > 40 ? "from-yellow-600 to-yellow-400" : "from-red-600 to-red-400"
+    }`;
+  }
+
   // Wash trading
   const wash = document.getElementById("washTradingRisk");
   if (wash) {
@@ -358,7 +374,11 @@ function renderResults(t) {
   document.getElementById("mcapLiqRatio").textContent   = isFinite(Number(t.mcapLiqRatio)) ? `${Number(t.mcapLiqRatio)}x` : "--x";
 
   const liq = t.scores?.liquidity ?? 0;
-  document.getElementById("liquidityScore").textContent = `${liq}/100`;
+  const liqEl = document.getElementById("liquidityScore");
+  if (liqEl) {
+    liqEl.textContent = `${liq}/100`;
+    liqEl.className = `text-base font-black ${liq > 70 ? "text-emerald-400" : liq > 40 ? "text-yellow-400" : "text-red-400"}`;
+  }
   const lb = document.getElementById("liquidityBar");
   if (lb) {
     lb.style.width = `${liq}%`;
@@ -385,7 +405,11 @@ function renderResults(t) {
   }
 
   const hs = t.scores?.holders ?? 0;
-  document.getElementById("holderScore").textContent = `${hs}/100`;
+  const hsEl = document.getElementById("holderScore");
+  if (hsEl) {
+    hsEl.textContent = `${hs}/100`;
+    hsEl.className = `text-base font-black ${hs > 70 ? "text-emerald-400" : hs > 40 ? "text-yellow-400" : "text-red-400"}`;
+  }
   const hb = document.getElementById("holderBar");
   if (hb) {
     hb.style.width = `${hs}%`;

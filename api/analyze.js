@@ -421,12 +421,34 @@ export default async function handler(req, res) {
       (liquidityScore * 0.30 + volumeScore * 0.25 + holderScore * 0.25 + sentimentScore * 0.20) - devActivityPenalty
     )));
 
-    const summary =
-      overall >= 80
-        ? `Strong fundamentals: healthy liquidity, distribution, and sentiment. ${devActivity.suspiciousActivity ? 'Monitor dev activity.' : 'Low dev risk.'}`
-        : overall >= 60
-          ? `Mixed signals: proceed with caution. ${devActivity.suspiciousActivity ? 'Dev has been selling recently.' : 'Watch LP lock % and top holders.'}`
-          : `High risk: ${devActivity.suspiciousActivity ? 'Dev actively selling + ' : ''}weak liquidity/lock or high concentration. Avoid large positions.`;
+    // ── Coin-specific summary with real numbers ────────────────
+    const parts = [];
+    parts.push(`${name} (${symbol}) scores ${overall}/100.`);
+    // Liquidity
+    if (liqTotal <= 0) parts.push('No liquidity detected — extreme risk.');
+    else if (liquidityScore >= 70) parts.push(`Healthy liquidity ($${(liqTotal / 1e3).toFixed(0)}K, ${Math.round(lpLockedPct)}% locked).`);
+    else if (liquidityScore >= 40) parts.push(`Moderate liquidity ($${(liqTotal / 1e3).toFixed(0)}K, ${Math.round(lpLockedPct)}% locked).`);
+    else parts.push(`Weak liquidity ($${(liqTotal / 1e3).toFixed(0)}K, only ${Math.round(lpLockedPct)}% locked).`);
+    // Holders
+    if (totalHolders < 10) parts.push(`Only ${totalHolders} holder(s) — near-zero distribution.`);
+    else if (totalHolders < 200) parts.push(`Thin holder base (${totalHolders}) — high concentration risk.`);
+    else if (totalHolders >= 10000) parts.push(`Strong ${totalHolders.toLocaleString()} holders, top 10 hold ${top10Pct.toFixed(1)}%.`);
+    else parts.push(`${totalHolders.toLocaleString()} holders, top 10 hold ${top10Pct.toFixed(1)}%.`);
+    // Volume
+    if (v24 === 0) parts.push('Zero 24 h volume — token may be dead.');
+    else if (washTrading === 'High') parts.push(`Suspicious volume ($${(v24 / 1e3).toFixed(0)}K, wash-trade risk high).`);
+    else parts.push(`Volume $${(v24 / 1e3).toFixed(0)}K (${washTrading.toLowerCase()} wash risk).`);
+    // Authorities
+    if (mintAuth) parts.push('Mint authority still active — can inflate supply.');
+    if (freezeAuth) parts.push('Freeze authority active — funds can be frozen.');
+    // Dev
+    if (devActivity.suspiciousActivity) parts.push('Dev wallet selling recently — watch closely.');
+    else if (devPct > 10) parts.push(`Dev holds ${devPct.toFixed(1)}% — monitor.`);
+    // Verdict
+    if (overall >= 80) parts.push('Relatively safer profile — still DYOR.');
+    else if (overall >= 55) parts.push('Proceed with caution — set stops.');
+    else parts.push('High risk — avoid large positions.');
+    const summary = parts.join(' ');
 
     // ==================== TOP HOLDERS (REAL ADDRESSES) ====================
     let topHolders = [];
