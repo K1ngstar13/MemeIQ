@@ -348,10 +348,10 @@ function renderResults(t) {
     vsEl.textContent = `${vs}/100`;
     vsEl.className = `text-base font-black ${vs > 70 ? "text-emerald-400" : vs > 40 ? "text-yellow-400" : "text-red-400"}`;
   }
-  const vb = document.getElementById("volumeBar");
-  if (vb) {
-    vb.style.width = `${vs}%`;
-    vb.className   = `progress-bar-fill h-full rounded-full transition-all duration-1000 bg-gradient-to-r ${
+  const volBar = document.getElementById("volumeBar");
+  if (volBar) {
+    volBar.style.width = `${vs}%`;
+    volBar.className   = `progress-bar-fill h-full rounded-full transition-all duration-1000 bg-gradient-to-r ${
       vs > 70 ? "from-emerald-600 to-emerald-400" :
       vs > 40 ? "from-yellow-600 to-yellow-400" : "from-red-600 to-red-400"
     }`;
